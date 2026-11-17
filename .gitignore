@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# 가상환경
+.venv/
+venv/
+
+# 편집기·OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Streamlit 비밀 설정
+.streamlit/secrets.toml
+
+# 이전 과제 코드 (수업 제공 뼈대 기반이라 공개 저장소에 올리지 않음)
+lemma/
