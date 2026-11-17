@@ -1,0 +1,10 @@
+[project]
+name = "catching-lemma"
+version = "0.1.0"
+description = "만들고, 틀리고, 증명하는 오토마타 퍼즐"
+requires-python = ">=3.10"
+license = "MIT"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
