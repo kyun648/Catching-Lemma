@@ -126,7 +126,17 @@ def trace_text(machine: dict, word: str) -> tuple[bool, str]:
     return run["accepted"], f"지나간 상태: {show_path(run['trace'])}"
 
 
+def too_large_message() -> str:
+    return (
+        f"NFA가 너무 커서 DFA로 바꿀 수 없어요. 바꾼 DFA의 상태가 {api.MAX_DFA_STATES}개를 넘어요. "
+        "상태 수를 줄여보세요."
+    )
+
+
 def show_result(result: dict, machine: dict) -> None:
+    if result["too_large"]:
+        st.warning(too_large_message())
+        return
     if result["correct"]:
         if machine["type"] == "nfa":
             st.success(f"정답이에요. NFA 상태 {result['used_states']}개")
@@ -192,7 +202,7 @@ def stage_chapter(chapter: str) -> None:
 
     with right:
         if machine["states"]:
-            cex = result["counterexample"] if result is not None and not result["correct"] else None
+            cex = result["counterexample"] if result is not None else None
             st.graphviz_chart(api.diagram(machine, cex))
             if chapter == "nfa":
                 st.caption("겹원은 종료 상태, 칠해진 상태는 반례를 끝까지 읽은 뒤 남아 있는 상태예요.")
@@ -202,6 +212,9 @@ def stage_chapter(chapter: str) -> None:
         if chapter == "nfa" and can_grade:
             with st.expander("DFA로 바꾸면 (부분집합 구성)"):
                 dfa = api.to_dfa(machine)
+                if dfa is None:
+                    st.warning(too_large_message())
+                    return
                 st.caption(
                     f"NFA 상태들의 집합 하나하나가 DFA의 상태가 돼요. 도달 가능한 집합만 만들었더니 {len(dfa['states'])}개예요. "
                     "빈 집합(∅)으로 가는 전이는 그리지 않았어요."

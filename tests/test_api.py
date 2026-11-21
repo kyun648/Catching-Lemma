@@ -33,6 +33,15 @@ NFA_SECOND_LAST_A = {
 }
 
 
+def nth_from_last_a(n: int) -> dict:
+    """끝에서 n번째 글자가 a인 NFA. 상태 n+1개, 바꾼 DFA는 상태 2^n개."""
+    transitions = {"q0": {"a": ["q0", "q1"], "b": ["q0"]}}
+    for i in range(1, n):
+        transitions[f"q{i}"] = {"a": [f"q{i + 1}"], "b": [f"q{i + 1}"]}
+    return {"type": "nfa", "states": [f"q{i}" for i in range(n + 1)], "alphabet": ["a", "b"],
+            "start": "q0", "accept": [f"q{n}"], "transitions": transitions}
+
+
 def roundtrips_as_json(value) -> bool:
     return json.loads(json.dumps(value)) == value
 
@@ -98,7 +107,7 @@ def test_grade_correct_and_wrong():
 
     right = api.grade("nfa-01", NFA_SECOND_LAST_A)
     assert right == {"correct": True, "counterexample": None, "expected": None,
-                     "used_states": 3, "optimal_states": 4}
+                     "used_states": 3, "optimal_states": 4, "too_large": False}
 
 
 def test_grade_unknown_stage():
@@ -116,6 +125,19 @@ def test_to_dfa_and_normalize():
     reordered = {**NFA_SECOND_LAST_A, "transitions": {"q0": {"a": ["q0", "q1"], "b": ["q0"]},
                                                       "q1": {"a": ["q2"], "b": ["q2"]}}}
     assert api.normalize(reordered) == api.normalize(NFA_SECOND_LAST_A)
+
+
+def test_large_nfa_is_not_converted_or_graded():
+    big = nth_from_last_a(12)  # DFA로 바꾸면 2^12 = 4096개 상태 > 상한
+    assert api.MAX_DFA_STATES < 2**12
+    assert api.to_dfa(big) is None
+    result = api.grade("nfa-01", big)
+    assert result["too_large"] is True
+    assert result["correct"] is False
+    assert result["counterexample"] is None
+    assert roundtrips_as_json(result)
+    # 화면에 그리는 것(변환 없음)은 그대로 된다
+    assert api.diagram(big).startswith("digraph")
 
 
 def test_diagram_highlights_counterexample():

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .dfa import DFA, Issue, RunResult, find_counterexample, minimal_state_count
-from .nfa import LAMBDA, NFA, NFARunResult
+from .nfa import LAMBDA, MAX_DFA_STATES, NFA, NFARunResult, TooManyStatesError
 
 
 def automaton_from_dict(data: dict) -> DFA | NFA:
@@ -15,6 +15,8 @@ __all__ = [
     "DFA",
     "NFA",
     "LAMBDA",
+    "MAX_DFA_STATES",
+    "TooManyStatesError",
     "Issue",
     "RunResult",
     "NFARunResult",

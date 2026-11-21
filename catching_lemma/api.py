@@ -12,11 +12,12 @@ from __future__ import annotations
 from dataclasses import asdict
 
 from .diagram import to_dot
-from .engine import LAMBDA, NFA, automaton_from_dict
+from .engine import LAMBDA, MAX_DFA_STATES, NFA, TooManyStatesError, automaton_from_dict
 from .stages import Stage, grade as _grade, load_stages
 
 __all__ = [
     "LAMBDA",
+    "MAX_DFA_STATES",
     "list_stages",
     "normalize",
     "validate",
@@ -92,16 +93,24 @@ def grade(stage_id: str, machine: dict) -> dict:
     """정답 기계와 비교한 채점 결과. 호출 전에 is_valid(machine)를 확인할 것.
 
     {"correct": bool, "counterexample": str | None, "expected": bool | None,
-     "used_states": int | None, "optimal_states": int | None}
+     "used_states": int | None, "optimal_states": int | None, "too_large": bool}
+
+    too_large가 True면 NFA를 DFA로 바꾸다가 상태가 MAX_DFA_STATES개를 넘어서 채점하지 못한 것이다.
     """
     return asdict(_grade(_find_stage(stage_id), automaton_from_dict(machine)))
 
 
-def to_dfa(machine: dict) -> dict:
-    """NFA를 부분집합 구성으로 바꾼 DFA. DFA를 넣으면 그대로 돌려준다."""
+def to_dfa(machine: dict) -> dict | None:
+    """NFA를 부분집합 구성으로 바꾼 DFA. DFA를 넣으면 그대로 돌려준다.
+
+    바꾼 DFA의 상태가 MAX_DFA_STATES개를 넘으면 None을 돌려준다.
+    """
     automaton = automaton_from_dict(machine)
     if isinstance(automaton, NFA):
-        automaton = automaton.to_dfa()
+        try:
+            automaton = automaton.to_dfa()
+        except TooManyStatesError:
+            return None
     return automaton.to_dict()
 
 

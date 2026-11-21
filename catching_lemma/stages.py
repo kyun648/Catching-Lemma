@@ -6,7 +6,14 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .engine import DFA, NFA, automaton_from_dict, find_counterexample, minimal_state_count
+from .engine import (
+    DFA,
+    NFA,
+    TooManyStatesError,
+    automaton_from_dict,
+    find_counterexample,
+    minimal_state_count,
+)
 
 STAGE_DIR = Path(__file__).parent / "stage_data"
 
@@ -36,6 +43,7 @@ class GradeResult:
     expected: bool | None = None  # 반례를 정답 기계가 받아들이는지
     used_states: int | None = None  # 플레이어 설계의 상태 수 (DFA는 완전한 DFA 기준)
     optimal_states: int | None = None  # 같은 언어의 최소 DFA 상태 수 (완전한 DFA 기준)
+    too_large: bool = False  # NFA를 DFA로 바꾸다가 상태 수 상한을 넘어서 채점하지 못함
 
 
 def to_dfa(automaton: DFA | NFA) -> DFA:
@@ -69,10 +77,15 @@ def grade(stage: Stage, candidate: DFA | NFA) -> GradeResult:
     """플레이어 설계를 정답 기계와 비교한다. 호출 전에 candidate.is_valid()를 확인할 것.
 
     NFA는 부분집합 구성으로 DFA로 바꾼 뒤 비교한다. 상태 수 비교는 DFA 챕터에서만 의미가 있다.
+    바꾼 DFA가 상태 수 상한을 넘으면 채점하지 않고 too_large=True를 돌려준다.
     """
     reference = stage.reference_dfa
     optimal = minimal_state_count(reference)
-    cex = find_counterexample(to_dfa(candidate), reference)
+    try:
+        candidate_dfa = to_dfa(candidate)
+    except TooManyStatesError:
+        return GradeResult(correct=False, too_large=True, optimal_states=optimal)
+    cex = find_counterexample(candidate_dfa, reference)
     if cex is None:
         if isinstance(candidate, NFA):
             used = len(candidate.states)

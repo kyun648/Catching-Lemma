@@ -93,3 +93,17 @@ def test_dfa_answer_accepted_in_nfa_stage():
     """NFA 스테이지에 DFA로 답해도 같은 언어면 정답이다 (DFA는 NFA의 특수한 경우)."""
     stage = next(s for s in STAGES if s.id == "nfa-01")
     assert grade(stage, stage.reference_dfa).correct
+
+
+def test_too_large_nfa_is_not_graded():
+    stage = next(s for s in STAGES if s.id == "nfa-01")
+    n = 12  # 끝에서 12번째 글자가 a: 바꾼 DFA는 상태 2^12개
+    transitions = {"q0": {"a": ["q0", "q1"], "b": ["q0"]}}
+    for i in range(1, n):
+        transitions[f"q{i}"] = {"a": [f"q{i + 1}"], "b": [f"q{i + 1}"]}
+    big = NFA(states=[f"q{i}" for i in range(n + 1)], alphabet=["a", "b"], start="q0",
+              accept={f"q{n}"}, transitions=transitions)
+    result = grade(stage, big)
+    assert result.too_large
+    assert not result.correct
+    assert result.counterexample is None

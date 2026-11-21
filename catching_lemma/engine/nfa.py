@@ -25,9 +25,27 @@ from .dfa import DFA, Issue
 
 LAMBDA = "λ"
 
+# 부분집합 구성으로 만들 DFA 상태 수의 상한. NFA 상태가 n개면 DFA는 최대 2^n개까지 커질 수 있어서,
+# 큰 NFA 하나로 화면이 멈추지 않도록 이 수를 넘으면 변환을 멈춘다.
+MAX_DFA_STATES = 2000
+
+# 부분집합 이름 "{q0,q1}"에 쓰는 글자. 상태 이름에 들어 있으면 서로 다른 집합이 같은 이름이 될 수 있다.
+RESERVED_CHARS = ",{}"
+
+
+class TooManyStatesError(ValueError):
+    """부분집합 구성 결과가 MAX_DFA_STATES를 넘을 때."""
+
+    def __init__(self, limit: int):
+        super().__init__(f"DFA 상태가 {limit}개를 넘어서 변환을 멈췄어요.")
+        self.limit = limit
+
 
 def set_name(states: frozenset) -> str:
-    """상태 집합을 DFA 상태 이름으로 바꾼다. 예: {q0, q1} → "{q0,q1}" """
+    """상태 집합을 DFA 상태 이름으로 바꾼다. 예: {q0, q1} → "{q0,q1}"
+
+    상태 이름에 RESERVED_CHARS가 없을 때만 서로 다른 집합이 서로 다른 이름이 된다 (validate가 확인한다).
+    """
     return "{" + ",".join(sorted(states)) + "}"
 
 
@@ -86,6 +104,9 @@ class NFA:
             issues.append(Issue("error", "상태가 하나도 없어요."))
         if len(state_set) != len(self.states):
             issues.append(Issue("error", "같은 이름의 상태가 두 번 이상 있어요."))
+        for s in self.states:
+            if any(c in s for c in RESERVED_CHARS):
+                issues.append(Issue("error", f"상태 이름 '{s}'에는 쉼표(,)나 중괄호({{ }})를 쓸 수 없어요."))
         for sym in self.alphabet:
             if len(sym) != 1:
                 issues.append(Issue("error", f"입력 기호 '{sym}'는 한 글자여야 해요."))
@@ -107,9 +128,8 @@ class NFA:
                     )
                 for dst in dsts:
                     if dst not in state_set:
-                        label = "λ" if sym == LAMBDA else sym
                         issues.append(
-                            Issue("error", f"{src} --{label}--> '{dst}': 없는 상태로 가요.")
+                            Issue("error", f"{src} --{sym}--> '{dst}': 없는 상태로 가요.")
                         )
         return issues
 
@@ -150,12 +170,14 @@ class NFA:
 
     # ---------- DFA 변환 ----------
 
-    def to_dfa(self) -> DFA:
+    def to_dfa(self, max_states: int = MAX_DFA_STATES) -> DFA:
         """부분집합 구성(subset construction).
 
         DFA의 각 상태는 NFA 상태들의 집합이다. 시작 상태의 λ-closure에서 출발해
         도달 가능한 집합만 만든다. 빈 집합으로 가는 전이는 만들지 않고 비워둔다.
         (DFA 엔진은 빠진 전이를 죽은 상태로 처리하므로 같은 의미다.)
+
+        만든 상태가 max_states를 넘으면 TooManyStatesError를 낸다.
         """
         start = self.lambda_closure({self.start})
         names = {start: set_name(start)}
@@ -169,6 +191,8 @@ class NFA:
                 if not nxt:
                     continue
                 if nxt not in names:
+                    if len(names) >= max_states:
+                        raise TooManyStatesError(max_states)
                     names[nxt] = set_name(nxt)
                     order.append(nxt)
                     queue.append(nxt)

@@ -1,4 +1,13 @@
-from catching_lemma.engine import DFA, LAMBDA, NFA, find_counterexample, minimal_state_count
+import pytest
+
+from catching_lemma.engine import (
+    DFA,
+    LAMBDA,
+    NFA,
+    TooManyStatesError,
+    find_counterexample,
+    minimal_state_count,
+)
 
 
 def second_last_a() -> NFA:
@@ -116,3 +125,31 @@ def test_validate_errors():
 def test_missing_transitions_are_not_warned():
     issues = second_last_a().validate()
     assert issues == []
+
+
+def test_state_names_with_reserved_chars_are_errors():
+    """부분집합 이름 "{x,y}"가 겹치지 않도록 상태 이름에 쉼표와 중괄호를 막는다.
+
+    막지 않으면 {x, y}와 {"x,y"}가 둘 다 "{x,y}"가 되어, NFA는 "a"를 거부하는데 바꾼 DFA는 받아들인다.
+    """
+    nfa = NFA.from_dict(
+        {
+            "type": "nfa",
+            "states": ["s", "x", "y", "x,y"],
+            "alphabet": ["a", "b"],
+            "start": "s",
+            "accept": ["x,y"],
+            "transitions": {"s": {"a": ["x", "y"], "b": ["x,y"]}},
+        }
+    )
+    assert not nfa.is_valid()
+    assert any("x,y" in i.message for i in nfa.validate() if i.level == "error")
+    for name in ["{q0}", "q{", "a}"]:
+        assert not NFA.from_dict({**second_last_a().to_dict(), "states": ["q0", "q1", "q2", name]}).is_valid()
+
+
+def test_subset_construction_stops_at_limit():
+    nfa = second_last_a()
+    with pytest.raises(TooManyStatesError):
+        nfa.to_dfa(max_states=3)  # 실제로는 상태 4개가 필요하다
+    assert len(nfa.to_dfa(max_states=4).states) == 4
