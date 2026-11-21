@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit 리뷰 설정 (Catching Lemma)
+
+language: "ko-KR"
+early_access: false
+
+reviews:
+  # chill: 사소한 지적을 줄인 리뷰 성향 (assertive보다 코멘트가 적음)
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: true
+  auto_review:
+    enabled: true
+    drafts: false
+  path_filters:
+    - "!lemma/**"
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        - 모든 리뷰와 요약은 한국어로 작성한다.
+        - 병합을 막을 정도의 문제만 지적하고, 사소한 서식(줄 길이, 따옴표, import 순서)은 지적하지 않는다.
+        - 코멘트는 가능하면 5개 이내로 하고, 중요한 것부터 쓴다.
+        - 동작이 같은 다른 작성 방식으로 바꾸자는 리팩터링 제안은 하지 않는다.
+        - 외부 코드나 자료를 참고했거나 새 라이브러리를 추가했다면, README의 "참고자료"와 "사용한 라이브러리"(라이선스 포함) 표기가 있는지 확인한다.
+    - path: "catching_lemma/engine/**"
+      instructions: |
+        - 오토마타 이론의 정의와 맞는지 가장 먼저 확인한다: DFA 판정, 최단 반례(곱 오토마톤 BFS), 최소화(분할 세분화), NFA 부분집합 구성, 펌핑 보조정리 분할 조건(|xy| ≤ p, |y| ≥ 1 / |vxy| ≤ p, |vy| ≥ 1).
+        - 빈 문자열, 상태가 없는 경우, 빠진 전이, 무한 루프 가능성 같은 경계 조건을 확인한다.
+        - 빠진 전이는 오류가 아니라 죽은 상태(DEAD)로 가서 거부하는 것이 프로젝트 규칙이다.
+        - 동작을 바꾸는 변경에 tests/ 테스트가 함께 있는지 확인한다.
+    - path: "app.py"
+      instructions: |
+        - 화면 코드가 엔진 내부 구조에 직접 의존하지 않고 JSON(dict) 형식으로 주고받는지 확인한다.
+        - 사용자에게 보이는 문구는 한국어여야 한다.
+    - path: "catching_lemma/stage_data/**/*.json"
+      instructions: |
+        - reference(정답 기계)가 문제 설명(description)의 언어와 일치하는지, 설명의 예시 문자열이 실제로 맞게 판정되는지 확인한다.
+
+chat:
+  auto_reply: true

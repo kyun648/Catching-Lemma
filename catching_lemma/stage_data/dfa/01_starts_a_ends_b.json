@@ -1,0 +1,21 @@
+{
+  "id": "dfa-01",
+  "chapter": "dfa",
+  "title": "a로 시작해서 b로 끝나기",
+  "description": "a로 시작하고 b로 끝나는 문자열만 받아들이는 DFA를 만드세요. (예: ab, aab, abab는 받아들이고, b, ba, a는 거부)",
+  "hint": "첫 글자가 b이면 그 뒤에 무엇이 와도 실패예요. 이런 경우를 모아둘 상태가 하나 필요해요.",
+  "alphabet": ["a", "b"],
+  "reference": {
+    "type": "dfa",
+    "states": ["s", "x", "a", "b"],
+    "alphabet": ["a", "b"],
+    "start": "s",
+    "accept": ["b"],
+    "transitions": {
+      "s": {"a": "a", "b": "x"},
+      "x": {"a": "x", "b": "x"},
+      "a": {"a": "a", "b": "b"},
+      "b": {"a": "a", "b": "b"}
+    }
+  }
+}
