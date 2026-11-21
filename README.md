@@ -65,8 +65,9 @@ pytest
 
 ```
 catching-lemma/
-├── app.py                      # Streamlit 화면
+├── app.py                      # Streamlit 화면 (catching_lemma.api만 사용)
 ├── catching_lemma/
+│   ├── api.py                  # 화면과 엔진 사이 창구 (dict로 주고받기)
 │   ├── engine/
 │   │   ├── dfa.py              # DFA 표현, 검증, 실행, 최단 반례, 최소 상태 수
 │   │   └── nfa.py              # NFA 표현, λ-closure, 실행, 부분집합 구성
@@ -79,6 +80,9 @@ catching-lemma/
 ```
 
 빈 문자열은 교재 표기를 따라 λ로 씁니다.
+
+화면(`app.py`)은 `catching_lemma.api`만 쓰고, 엔진과는 오토마타 JSON(dict) 형식으로만 주고받습니다.
+엔진 내부를 바꿔도 `api.py`가 돌려주는 형식만 지키면 화면은 고치지 않아도 됩니다. `tests/test_api.py`가 이 규칙을 검사합니다.
 
 ### 동작 방식
 
