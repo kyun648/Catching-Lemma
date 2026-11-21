@@ -1,0 +1,72 @@
+{
+  "id": "nfa-02",
+  "chapter": "nfa",
+  "title": "aa 또는 bb가 들어 있는 문자열",
+  "description": "어딘가에 aa나 bb가 연속으로 들어 있는 문자열만 받아들이는 NFA를 만드세요. (예: aa, abba, babb는 받아들이고, ab, aba, baba는 거부)",
+  "hint": "aa를 찾는 갈래와 bb를 찾는 갈래를 따로 만들고, 둘 중 하나라도 성공하면 받아들이게 해보세요.",
+  "alphabet": [
+    "a",
+    "b"
+  ],
+  "examples": {
+    "accept": [
+      "aa",
+      "bb",
+      "abba",
+      "babb"
+    ],
+    "reject": [
+      "",
+      "ab",
+      "aba",
+      "baba"
+    ]
+  },
+  "reference": {
+    "type": "nfa",
+    "states": [
+      "q0",
+      "a1",
+      "b1",
+      "f"
+    ],
+    "alphabet": [
+      "a",
+      "b"
+    ],
+    "start": "q0",
+    "accept": [
+      "f"
+    ],
+    "transitions": {
+      "q0": {
+        "a": [
+          "q0",
+          "a1"
+        ],
+        "b": [
+          "q0",
+          "b1"
+        ]
+      },
+      "a1": {
+        "a": [
+          "f"
+        ]
+      },
+      "b1": {
+        "b": [
+          "f"
+        ]
+      },
+      "f": {
+        "a": [
+          "f"
+        ],
+        "b": [
+          "f"
+        ]
+      }
+    }
+  }
+}

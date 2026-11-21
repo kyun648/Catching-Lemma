@@ -1,0 +1,61 @@
+{
+  "id": "nfa-01",
+  "chapter": "nfa",
+  "title": "끝에서 두 번째 글자가 a",
+  "description": "끝에서 두 번째 글자가 a인 문자열만 받아들이는 NFA를 만드세요. (예: aa, ab, bab는 받아들이고, a, ba, abb는 거부)",
+  "hint": "NFA는 '방금 읽은 a가 끝에서 두 번째 글자일 거야'라고 추측해도 돼요. 추측이 틀린 경로는 알아서 사라지고, 맞은 경로가 하나라도 있으면 받아들여요.",
+  "alphabet": [
+    "a",
+    "b"
+  ],
+  "examples": {
+    "accept": [
+      "aa",
+      "ab",
+      "bab",
+      "aaab"
+    ],
+    "reject": [
+      "",
+      "a",
+      "b",
+      "ba",
+      "abb"
+    ]
+  },
+  "reference": {
+    "type": "nfa",
+    "states": [
+      "q0",
+      "q1",
+      "q2"
+    ],
+    "alphabet": [
+      "a",
+      "b"
+    ],
+    "start": "q0",
+    "accept": [
+      "q2"
+    ],
+    "transitions": {
+      "q0": {
+        "a": [
+          "q0",
+          "q1"
+        ],
+        "b": [
+          "q0"
+        ]
+      },
+      "q1": {
+        "a": [
+          "q2"
+        ],
+        "b": [
+          "q2"
+        ]
+      }
+    }
+  }
+}

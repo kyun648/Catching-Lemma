@@ -19,7 +19,7 @@ Catching Lemma는 게임의 각 차례가 증명의 어느 문장에 해당하�
 | 챕터 | 내용 | 상태 |
 |---|---|---|
 | 1. DFA | 전이표로 DFA 설계, 자동 다이어그램, 최단 반례, 최소 상태 수 비교 | 동작 |
-| 2. NFA | NFA 설계 (DFA로 변환해 같은 방식으로 채점) | 예정 |
+| 2. NFA | λ 전이를 포함한 NFA 설계, 실행 중 활성 상태 집합 추적, 부분집합 구성으로 변환한 DFA 보기 | 동작 |
 | 3. 정규 펌핑 게임 | p 변수 문자열 입력, 모든 분할 검사, 패배 이유 표, 증명문 생성 | 예정 |
 | 4. 문맥자유 펌핑 게임 | uvxyz 분할 버전 | 예정 |
 | 5. PDA, 튜링머신 | 설계 퍼즐 (테스트 문자열 기반 채점) | 여유가 있으면 |
@@ -68,13 +68,17 @@ catching-lemma/
 ├── app.py                      # Streamlit 화면
 ├── catching_lemma/
 │   ├── engine/
-│   │   └── dfa.py              # DFA 표현, 검증, 실행, 최단 반례, 최소 상태 수
+│   │   ├── dfa.py              # DFA 표현, 검증, 실행, 최단 반례, 최소 상태 수
+│   │   └── nfa.py              # NFA 표현, λ-closure, 실행, 부분집합 구성
 │   ├── stages.py               # 스테이지 불러오기와 채점
-│   ├── diagram.py              # DFA → Graphviz DOT 변환
+│   ├── diagram.py              # DFA·NFA → Graphviz DOT 변환
 │   └── stage_data/
-│       └── dfa/*.json          # 스테이지 정의
+│       ├── dfa/*.json          # DFA 스테이지 정의
+│       └── nfa/*.json          # NFA 스테이지 정의
 └── tests/                      # pytest 테스트
 ```
+
+빈 문자열은 교재 표기를 따라 λ로 씁니다.
 
 ### 동작 방식
 
@@ -84,23 +88,30 @@ catching-lemma/
   미완성 설계도 채점할 수 있도록 하기 위해서입니다.
 - **최소 상태 수**: 도달 가능한 상태만 남기고 분할 세분화(Moore 알고리즘)로 구분되지 않는 상태를 합쳐서 계산합니다.
   빠진 전이가 있으면 죽은 상태 1개를 포함한 "완전한 DFA" 기준으로 셉니다.
+- **NFA 채점**: 부분집합 구성(subset construction)으로 NFA를 DFA로 바꾼 뒤 위의 반례 탐색을 그대로 씁니다.
+  DFA의 각 상태는 NFA 상태들의 집합이고, 시작 상태의 λ-closure에서 도달 가능한 집합만 만듭니다.
+  NFA 스테이지에 DFA로 답해도 같은 언어면 정답입니다.
 
 ### 스테이지 추가하기
 
-`catching_lemma/stage_data/dfa/`에 JSON 파일을 추가하면 자동으로 목록에 나타납니다.
-`reference`에는 정답 DFA를 넣습니다. 같은 언어를 받아들이기만 하면 플레이어의 설계 모양은 달라도 정답으로 인정됩니다.
+`catching_lemma/stage_data/<챕터>/`에 JSON 파일을 추가하면 자동으로 목록에 나타납니다.
+`reference`에는 정답 기계(DFA 또는 NFA)를 넣습니다. 같은 언어를 받아들이기만 하면 플레이어의 설계 모양은 달라도 정답으로 인정됩니다.
+`examples`에는 설명에 적은 예시 문자열을 넣습니다. 테스트가 정답 기계의 판정과 맞는지 확인합니다.
 
 ```json
 {
-  "id": "dfa-04",
-  "chapter": "dfa",
+  "id": "nfa-04",
+  "chapter": "nfa",
   "title": "스테이지 제목",
   "description": "문제 설명",
   "hint": "힌트 (선택)",
   "alphabet": ["a", "b"],
-  "reference": { "type": "dfa", "states": [], "alphabet": ["a", "b"], "start": "", "accept": [], "transitions": {} }
+  "examples": { "accept": ["ab"], "reject": ["ba"] },
+  "reference": { "type": "nfa", "states": [], "alphabet": ["a", "b"], "start": "", "accept": [], "transitions": {} }
 }
 ```
+
+NFA의 `transitions`는 도착 상태 목록을 쓰고, λ 전이는 `"λ"` 키로 적습니다. 예: `{"q0": {"a": ["q0", "q1"], "λ": ["q1"]}}`
 
 ## 참고자료
 
