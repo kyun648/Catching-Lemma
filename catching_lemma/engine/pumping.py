@@ -352,10 +352,51 @@ def candidate_words(language: BlockLanguage, m: int, max_length: int | None = No
     return sorted(words, key=lambda w: (len(w), w))
 
 
+MAX_RECEIVE_CANDIDATES = 300  # 막는 쪽 게임에서 m = 8일 때 컴퓨터가 살펴보는 후보 w 수의 상한 (스테이지 테스트가 확인)
+
+
+def _breakable(language: BlockLanguage, word: str, start: int, end: int) -> bool:
+    """이 수비 코스(분할)를 뚫는 i가 있는지. 처음 찾은 i에서 멈춘다."""
+    return any(not language.contains(pump(word, start, end, i)) for i in SMASH_VALUES)
+
+
+def _split_ranges(word: str, m: int):
+    for start in range(0, m):
+        for end in range(start + 1, min(m, len(word)) + 1):
+            yield start, end
+
+
 def beaten_fraction(language: BlockLanguage, word: str, m: int) -> float:
     """w로 리시브했을 때 뚫을 수 있는 수비 코스의 비율. 1.0이면 어떤 수비도 뚫는 리시브다."""
-    splits = analyze_splits(language, word, m)
-    return sum(1 for s in splits if s.breaking) / len(splits)
+    score = _score(language, word, m)
+    return score.beaten / score.total
+
+
+def is_winning_receive(language: BlockLanguage, word: str, m: int) -> bool:
+    """어떤 수비도 뚫는 리시브인지. 못 뚫는 코스를 하나 찾으면 바로 멈춘다."""
+    return all(_breakable(language, word, s, e) for s, e in _split_ranges(word, m))
+
+
+@dataclass(frozen=True)
+class ReceiveScore:
+    word: str
+    beaten: int  # 뚫을 수 있는 수비 코스 수
+    total: int  # 전체 수비 코스 수
+
+    @property
+    def winning(self) -> bool:
+        return self.beaten == self.total
+
+
+def _score(language: BlockLanguage, word: str, m: int) -> ReceiveScore:
+    ranges = list(_split_ranges(word, m))
+    beaten = sum(1 for s, e in ranges if _breakable(language, word, s, e))
+    return ReceiveScore(word, beaten, len(ranges))
+
+
+def receive_scores(language: BlockLanguage, m: int) -> tuple[ReceiveScore, ...]:
+    """후보 w마다 뚫을 수 있는 수비 코스 수. choose_receive와 best_receives가 같이 쓰도록 한 번에 계산한다."""
+    return tuple(_score(language, w, m) for w in candidate_words(language, m))
 
 
 @dataclass
@@ -365,31 +406,45 @@ class ReceiveChoice:
     winning: bool  # 어떤 수비도 뚫을 수 있는 리시브인지
 
 
-def choose_receive(language: BlockLanguage, m: int, rng: random.Random, rate: float) -> ReceiveChoice | None:
+def choose_receive(
+    language: BlockLanguage,
+    m: int,
+    rng: random.Random,
+    rate: float,
+    scores: tuple[ReceiveScore, ...] | None = None,
+) -> ReceiveChoice | None:
     """컴퓨터(깨는 쪽)의 리시브 선택.
 
     기본은 뚫을 수 있는 수비 코스의 비율이 가장 높은 w (동률이면 가장 짧은 것들 중 무작위).
     rate 확률로 그보다 약한 w를 고른다 (실수). 고를 수 있는 w가 없으면 None.
+    scores에 receive_scores 결과를 넘기면 다시 계산하지 않는다.
     """
-    words = candidate_words(language, m)
-    if not words:
+    scores = receive_scores(language, m) if scores is None else scores
+    if not scores:
         return None
-    scored = [(w, beaten_fraction(language, w, m)) for w in words]
-    best = max(score for _, score in scored)
+    ratio = {sc.word: sc.beaten / sc.total for sc in scores}
+    best = max(ratio.values())
     if rng.random() < rate:
-        weaker = [w for w, score in scored if score < best] or words
+        weaker = [w for w, r in ratio.items() if r < best] or list(ratio)
         word, mode = rng.choice(weaker), "mistake"
     else:
-        top = [w for w, score in scored if score == best]
+        top = [w for w, r in ratio.items() if r == best]
         shortest = min(len(w) for w in top)
         word, mode = rng.choice([w for w in top if len(w) == shortest]), "best"
-    return ReceiveChoice(word=word, mode=mode, winning=dict(scored)[word] == 1.0)
+    return ReceiveChoice(word=word, mode=mode, winning=ratio[word] == 1.0)
 
 
-def best_receives(language: BlockLanguage, m: int) -> tuple[list[str], int]:
-    """어떤 수비도 뚫는 리시브(w) 목록과 후보 전체 수. 목록이 비면 이 m에서는 막는 쪽이 언제나 막을 수 있다."""
+def best_receives(
+    language: BlockLanguage, m: int, scores: tuple[ReceiveScore, ...] | None = None
+) -> tuple[list[str], int]:
+    """어떤 수비도 뚫는 리시브(w) 목록과 후보 전체 수. 목록이 비면 이 m에서는 막는 쪽이 언제나 막을 수 있다.
+
+    scores가 없으면 후보마다 못 뚫는 코스를 찾는 즉시 다음 후보로 넘어간다.
+    """
+    if scores is not None:
+        return [sc.word for sc in scores if sc.winning], len(scores)
     words = candidate_words(language, m)
-    return [w for w in words if beaten_fraction(language, w, m) == 1.0], len(words)
+    return [w for w in words if is_winning_receive(language, w, m)], len(words)
 
 
 def computer_smash(language: BlockLanguage, word: str, start: int, end: int) -> int | None:

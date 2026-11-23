@@ -18,9 +18,13 @@ from catching_lemma.engine.pumping import (
     evaluate,
     expand_template,
     max_receive_length,
+    MAX_RECEIVE_CANDIDATES,
+    beaten_fraction,
     mistake_rate,
     parse_template,
+    is_winning_receive,
     pump,
+    receive_scores,
     split_error,
 )
 
@@ -325,3 +329,47 @@ def test_proof_with_too_long_template_is_unavailable_not_error():
     proof = build_proof(ANBN, "같다", "a^(14m) b^(14m)", [3, 4, 5, 6, 7])
     assert not proof.available
     assert "너무 길어요" in proof.reason
+
+
+# ---------- 리시브 계산량 (검토에서 찾은 문제) ----------
+
+
+@pytest.mark.parametrize("language", [ANBN, A_LESS_B, EVEN_A, A_STAR_B_STAR])
+def test_early_exit_matches_full_analysis(language):
+    """i 하나를 찾으면 멈추는 계산이 모든 i를 보는 analyze_splits와 같은 결과를 낸다."""
+    for m in range(1, 7):
+        for score in receive_scores(language, m):
+            splits = analyze_splits(language, score.word, m)
+            assert score.total == len(splits)
+            assert score.beaten == sum(1 for s in splits if s.breaking)
+            assert score.winning == is_winning_receive(language, score.word, m)
+            assert beaten_fraction(language, score.word, m) == score.beaten / score.total
+
+
+@pytest.mark.parametrize("language", [ANBN, A_LESS_B, EVEN_A, A_STAR_B_STAR])
+def test_best_receives_same_with_or_without_shared_scores(language):
+    for m in range(1, 7):
+        assert best_receives(language, m) == best_receives(language, m, scores=receive_scores(language, m))
+
+
+def test_choose_receive_same_with_or_without_shared_scores():
+    for rate in (0.0, 1.0):
+        for seed in range(5):
+            a = choose_receive(A_LESS_B, 4, random.Random(seed), rate)
+            b = choose_receive(A_LESS_B, 4, random.Random(seed), rate, scores=receive_scores(A_LESS_B, 4))
+            assert a == b
+
+
+def test_early_exit_reduces_membership_checks():
+    calls = {"n": 0}
+
+    class Counting(BlockLanguage):
+        def contains(self, word):
+            calls["n"] += 1
+            return super().contains(word)
+
+    lang = Counting(["a", "b"], "n1 > n0")
+    receive_scores(lang, 6)
+    full = sum(len(analyze_splits(A_LESS_B, w, 6)) * len(SMASH_VALUES) for w in candidate_words(A_LESS_B, 6))
+    assert calls["n"] < full
+    assert MAX_RECEIVE_CANDIDATES >= len(candidate_words(A_STAR_B_STAR, 8))

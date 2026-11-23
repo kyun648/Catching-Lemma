@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import asdict
+from functools import lru_cache
 
 from .diagram import to_dot
 from .engine import LAMBDA, MAX_DFA_STATES, NFA, TooManyStatesError, automaton_from_dict
@@ -29,6 +30,7 @@ from .engine.pumping import (
     mistake_rate,
     parse_template,
     pump,
+    receive_scores,
     split_error,
 )
 from .stages import PumpingStage, Stage, grade as _grade, load_pumping_stages, load_stages
@@ -356,6 +358,16 @@ def _serve_error(m) -> str | None:
     return None
 
 
+@lru_cache(maxsize=128)
+def _receive_scores(stage_id: str, m: int):
+    """(스테이지, m)마다 후보 w의 점수를 한 번만 계산한다.
+
+    컴퓨터의 리시브와 포인트 뒤 '최선의 리시브' 안내가 같은 계산을 쓰고, 같은 m을 다시 서브하면 바로 돌려준다.
+    결과는 바뀌지 않는 tuple이라 여러 세션이 같이 써도 안전하다. m은 _serve_error로 확인한 뒤에만 넘긴다.
+    """
+    return receive_scores(_find_pumping_stage(stage_id).language, m)
+
+
 def pumping_computer_receive(stage_id: str, m: int, point: int = 0, seed: int | None = None) -> dict:
     """막는 쪽 게임에서 컴퓨터의 리시브(w).
 
@@ -366,7 +378,9 @@ def pumping_computer_receive(stage_id: str, m: int, point: int = 0, seed: int | 
     stage = _find_pumping_stage(stage_id)
     if error := _serve_error(m):
         return {"ok": False, "word": None, "mode": None, "error": error}
-    choice = choose_receive(stage.language, m, random.Random(seed), pumping_mistake_rate(point))
+    choice = choose_receive(
+        stage.language, m, random.Random(seed), pumping_mistake_rate(point), scores=_receive_scores(stage_id, m)
+    )
     if choice is None:
         return {"ok": False, "word": None, "mode": None, "error": f"m = {m}일 때 고를 수 있는 w가 없어요."}
     return {"ok": True, "word": choice.word, "mode": choice.mode, "error": None}
@@ -400,7 +414,7 @@ def pumping_best_receive(stage_id: str, m: int) -> dict:
     stage = _find_pumping_stage(stage_id)
     if error := _serve_error(m):
         return {"ok": False, "error": error, "winning_words": [], "winning_count": 0, "total": 0}
-    winning, total = best_receives(stage.language, m)
+    winning, total = best_receives(stage.language, m, scores=_receive_scores(stage_id, m))
     return {"ok": True, "error": None, "winning_words": winning[:3], "winning_count": len(winning), "total": total}
 
 

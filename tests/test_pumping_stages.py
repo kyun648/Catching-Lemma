@@ -3,9 +3,11 @@
 import pytest
 
 from catching_lemma.engine.pumping import (
+    MAX_RECEIVE_CANDIDATES,
     analyze_splits,
     best_receives,
     build_proof,
+    candidate_words,
     expand_template,
     parse_template,
 )
@@ -94,3 +96,14 @@ def test_readme_example_stage_id_is_not_taken():
     taken = {s.id for s in STAGES} | {s.id for s in load_stages()}
     for example in pumping:
         assert example["id"] not in taken
+
+
+@pytest.mark.parametrize("stage", STAGES, ids=lambda s: s.id)
+def test_defender_game_receive_stays_light(stage):
+    """막는 쪽 게임에서 컴퓨터는 m = MAX_SERVE일 때 후보 w를 모두 살펴본다.
+
+    블록이 많고 조건이 느슨한 언어는 후보가 급격히 늘어 리시브 한 번에 수 초~수 분이 걸린다.
+    이 검사에 걸리면 조건을 좁히거나 블록 수를 줄여주세요.
+    """
+    count = len(candidate_words(stage.language, MAX_SERVE))
+    assert count <= MAX_RECEIVE_CANDIDATES, f"후보 w가 {count}개예요 (상한 {MAX_RECEIVE_CANDIDATES})."

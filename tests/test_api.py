@@ -312,3 +312,15 @@ def test_pumping_receive_rejects_non_arithmetic_exponent(template):
     assert time.perf_counter() - start < 0.5
     assert result["ok"] is False and result["kind"] == "parse"
     assert api.pumping_proof("pump-01", template)["available"] is False
+
+
+def test_receive_scores_are_computed_once_per_stage_and_m():
+    api._receive_scores.cache_clear()
+    api.pumping_computer_receive("pump-02", 5, seed=1)
+    api.pumping_best_receive("pump-02", 5)
+    api.pumping_computer_receive("pump-02", 5, seed=2)
+    info = api._receive_scores.cache_info()
+    assert info.misses == 1 and info.hits == 2
+    # 잘못된 m은 계산 전에 걸러서 캐시에 들어가지 않는다
+    assert api.pumping_computer_receive("pump-02", True)["ok"] is False
+    assert api._receive_scores.cache_info().misses == 1
