@@ -1,0 +1,55 @@
+{
+  "id": "nfa-03",
+  "chapter": "nfa",
+  "title": "a 여러 개 뒤에 b 여러 개 (λ 전이)",
+  "description": "a가 0개 이상 나온 뒤 b가 0개 이상 나오는 문자열(`a*b*`)만 받아들이는 NFA를 만드세요. λ 전이를 써보세요. (예: 빈 문자열, aab, bbb는 받아들이고, ba, aba는 거부)",
+  "hint": "a를 읽는 상태와 b를 읽는 상태를 만들고, 글자를 읽지 않고 넘어가는 λ 전이로 둘을 이어보세요. 전이표의 λ 칸에 적으면 돼요.",
+  "alphabet": [
+    "a",
+    "b"
+  ],
+  "examples": {
+    "accept": [
+      "",
+      "a",
+      "aab",
+      "bbb",
+      "abb"
+    ],
+    "reject": [
+      "ba",
+      "aba",
+      "bab"
+    ]
+  },
+  "reference": {
+    "type": "nfa",
+    "states": [
+      "qa",
+      "qb"
+    ],
+    "alphabet": [
+      "a",
+      "b"
+    ],
+    "start": "qa",
+    "accept": [
+      "qb"
+    ],
+    "transitions": {
+      "qa": {
+        "a": [
+          "qa"
+        ],
+        "λ": [
+          "qb"
+        ]
+      },
+      "qb": {
+        "b": [
+          "qb"
+        ]
+      }
+    }
+  }
+}

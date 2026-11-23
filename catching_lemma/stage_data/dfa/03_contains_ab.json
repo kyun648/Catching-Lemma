@@ -4,17 +4,50 @@
   "title": "ab가 들어 있는 문자열",
   "description": "어딘가에 ab가 연속으로 들어 있는 문자열만 받아들이는 DFA를 만드세요. (예: ab, bab, aabb는 받아들이고, ba, bbaa, a는 거부)",
   "hint": "a를 방금 읽었는지를 기억하는 상태가 필요해요. ab를 한 번 찾은 뒤에는 무엇이 와도 계속 받아들여요.",
-  "alphabet": ["a", "b"],
+  "alphabet": [
+    "a",
+    "b"
+  ],
+  "examples": {
+    "accept": [
+      "ab",
+      "bab",
+      "aabb"
+    ],
+    "reject": [
+      "ba",
+      "bbaa",
+      "a"
+    ]
+  },
   "reference": {
     "type": "dfa",
-    "states": ["none", "seen_a", "found"],
-    "alphabet": ["a", "b"],
+    "states": [
+      "none",
+      "seen_a",
+      "found"
+    ],
+    "alphabet": [
+      "a",
+      "b"
+    ],
     "start": "none",
-    "accept": ["found"],
+    "accept": [
+      "found"
+    ],
     "transitions": {
-      "none": {"a": "seen_a", "b": "none"},
-      "seen_a": {"a": "seen_a", "b": "found"},
-      "found": {"a": "found", "b": "found"}
+      "none": {
+        "a": "seen_a",
+        "b": "none"
+      },
+      "seen_a": {
+        "a": "seen_a",
+        "b": "found"
+      },
+      "found": {
+        "a": "found",
+        "b": "found"
+      }
     }
   }
 }

@@ -33,8 +33,14 @@ reviews:
         - 동작을 바꾸는 변경에 tests/ 테스트가 함께 있는지 확인한다.
     - path: "app.py"
       instructions: |
-        - 화면 코드가 엔진 내부 구조에 직접 의존하지 않고 JSON(dict) 형식으로 주고받는지 확인한다.
+        - app.py는 catching_lemma 패키지에서 catching_lemma.api만 import한다. engine, stages, diagram을 직접 import하면 지적한다. (tests/test_api.py가 같은 규칙을 검사한다)
+        - DFA·NFA 객체나 결과 dataclass를 다루지 않고, api 함수가 돌려주는 dict만 쓰는지 확인한다. 기계 종류는 isinstance가 아니라 dict의 "type" 값으로 구분한다.
         - 사용자에게 보이는 문구는 한국어여야 한다.
+    - path: "catching_lemma/api.py"
+      instructions: |
+        - 화면과 엔진 사이의 유일한 창구다. 모든 함수의 입력과 출력이 JSON으로 바꿀 수 있는 값(dict, list, str, int, bool, None)인지 확인한다. set, frozenset, dataclass, 엔진 객체를 그대로 돌려주면 지적한다.
+        - 돌려주는 dict의 키나 형식을 바꾸면 docstring과 tests/test_api.py도 함께 바뀌었는지 확인한다.
+        - 화면에 보낼 필요가 없는 정보(정답 기계, 예시 문자열)를 내보내지 않는지 확인한다.
     - path: "catching_lemma/stage_data/**/*.json"
       instructions: |
         - reference(정답 기계)가 문제 설명(description)의 언어와 일치하는지, 설명의 예시 문자열이 실제로 맞게 판정되는지 확인한다.
