@@ -27,7 +27,9 @@ reviews:
         - 외부 코드나 자료를 참고했거나 새 라이브러리를 추가했다면, README의 "참고자료"와 "사용한 라이브러리"(라이선스 포함) 표기가 있는지 확인한다.
     - path: "catching_lemma/engine/**"
       instructions: |
-        - 오토마타 이론의 정의와 맞는지 가장 먼저 확인한다: DFA 판정, 최단 반례(곱 오토마톤 BFS), 최소화(분할 세분화), NFA 부분집합 구성, 펌핑 보조정리 분할 조건(|xy| ≤ p, |y| ≥ 1 / |vxy| ≤ p, |vy| ≥ 1).
+        - 오토마타 이론의 정의와 맞는지 가장 먼저 확인한다: DFA 판정, 최단 반례(곱 오토마톤 BFS), 최소화(분할 세분화), NFA 부분집합 구성, 펌핑 보조정리 분할 조건(정규: w = xyz, |xy| ≤ m, |y| ≥ 1 / 문맥자유: w = uvxyz, |vxy| ≤ m, |vy| ≥ 1).
+        - 표기는 교재(Linz)를 따른다: 빈 문자열 λ, 펌핑 길이 m, 문자열 w. 다른 표기(p, s, ε 등)가 섞이면 지적한다.
+        - 사용자 입력으로 만들어지는 문자열은 만들기 전에 길이를 확인해야 한다 (예: expand_template은 블록 길이 합을 먼저 계산). 펌핑한 문자열이 판정 길이 상한(MAX_WORD_LENGTH)을 넘지 않는지 확인한다.
         - 빈 문자열, 상태가 없는 경우, 빠진 전이, 무한 루프 가능성 같은 경계 조건을 확인한다.
         - 빠진 전이는 오류가 아니라 죽은 상태(DEAD)로 가서 거부하는 것이 프로젝트 규칙이다.
         - 동작을 바꾸는 변경에 tests/ 테스트가 함께 있는지 확인한다.
@@ -40,10 +42,18 @@ reviews:
       instructions: |
         - 화면과 엔진 사이의 유일한 창구다. 모든 함수의 입력과 출력이 JSON으로 바꿀 수 있는 값(dict, list, str, int, bool, None)인지 확인한다. set, frozenset, dataclass, 엔진 객체를 그대로 돌려주면 지적한다.
         - 돌려주는 dict의 키나 형식을 바꾸면 docstring과 tests/test_api.py도 함께 바뀌었는지 확인한다.
-        - 화면에 보낼 필요가 없는 정보(정답 기계, 예시 문자열)를 내보내지 않는지 확인한다.
+        - 화면에 보낼 필요가 없는 정보(정답 기계, 예시 문자열, 펌핑 언어의 조건식·정규 여부·sample_receive)를 내보내지 않는지 확인한다. 정규 여부는 경기가 끝난 뒤 pumping_reveal로만 알려준다.
+        - 펌핑 api 함수는 받은 값(m, w, 분할 위치, i)을 스스로 확인하고, 문제가 있으면 예외 대신 {"ok": False, "error": ...}를 돌려준다. 확인 없이 엔진을 부르는 경로가 있으면 지적한다. 스테이지 id가 없을 때만 KeyError를 낸다.
     - path: "catching_lemma/stage_data/**/*.json"
       instructions: |
         - reference(정답 기계)가 문제 설명(description)의 언어와 일치하는지, 설명의 예시 문자열이 실제로 맞게 판정되는지 확인한다.
+    - path: "catching_lemma/stage_data/pumping/*.json"
+      instructions: |
+        - language.blocks와 constraint(블록 길이 n0, n1, ...의 조건식)가 notation(LaTeX 표기), description, condition_text와 같은 언어를 뜻하는지 확인한다.
+        - regular 값이 실제로 맞는지 확인한다 (정규 언어인데 false거나, 아닌데 true면 지적). tests/test_pumping_stages.py가 게임 결과로도 검사한다.
+        - sample_receive는 정규가 아닌 언어에만 있어야 하고, 모든 m_values에서 어떤 분할이든 뚫는 w여야 한다.
+        - description과 title이 정규 언어인지 아닌지를 미리 드러내지 않는지 확인한다 (역할을 고르기 전에 답을 알려주지 않기 위해서다).
+        - m_values는 3포인트 선승을 위해 5개 이상이어야 한다.
 
 chat:
   auto_reply: true

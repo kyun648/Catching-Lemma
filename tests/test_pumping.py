@@ -1,0 +1,268 @@
+import random
+
+import pytest
+
+from catching_lemma.engine.pumping import (
+    SMASH_VALUES,
+    BlockLanguage,
+    ExpressionError,
+    TemplateError,
+    analyze_splits,
+    best_receives,
+    build_proof,
+    candidate_words,
+    choose_defense,
+    choose_receive,
+    computer_smash,
+    WordTooLongError,
+    evaluate,
+    expand_template,
+    max_receive_length,
+    mistake_rate,
+    parse_template,
+    pump,
+    split_error,
+)
+
+ANBN = BlockLanguage(["a", "b"], "n0 == n1")
+A_LESS_B = BlockLanguage(["a", "b"], "n1 > n0")
+
+
+# ---------- 식 계산 ----------
+
+
+def test_evaluate_arithmetic_and_comparison():
+    assert evaluate("n0 == n1", {"n0": 2, "n1": 2}) is True
+    assert evaluate("2*m + 1", {"m": 3}) == 7
+    assert evaluate("n0 < n1 <= n2", {"n0": 1, "n1": 2, "n2": 2}) is True
+    assert evaluate("n0 != n1 and not n0 == 0", {"n0": 1, "n1": 2}) is True
+    assert evaluate("is_square(n0)", {"n0": 9}) is True
+    assert evaluate("is_prime(n0)", {"n0": 9}) is False
+
+
+@pytest.mark.parametrize(
+    "expr",
+    ["__import__('os')", "n0.real", "[1, 2]", "n0 ** 2", "x == 1", "lambda: 1", "m // 0"],
+)
+def test_evaluate_rejects_unsafe_or_unknown(expr):
+    with pytest.raises(ExpressionError):
+        evaluate(expr, {"n0": 1, "m": 1})
+
+
+# ---------- 블록 언어 ----------
+
+
+def test_block_language_contains():
+    assert ANBN.contains("")
+    assert ANBN.contains("aabb")
+    assert not ANBN.contains("aab")
+    assert not ANBN.contains("abab")  # 블록 순서가 어긋남
+    assert not ANBN.contains("ba")
+    assert A_LESS_B.contains("abb")
+    assert not A_LESS_B.contains("aabb")
+
+
+def test_block_language_with_repeated_letter():
+    # a^n b a^n: 'a' 블록이 두 번 나와서 분해 방법이 여러 개다
+    lang = BlockLanguage(["a", "b", "a"], "n0 == n2 and n1 == 1")
+    assert lang.contains("aabaa")
+    assert lang.contains("b")
+    assert not lang.contains("aaba")
+    assert not lang.contains("aa")
+
+
+# ---------- 템플릿 ----------
+
+
+def test_parse_and_expand_template():
+    blocks = parse_template("a^m b^(m+1)", ["a", "b"])
+    assert blocks == [("a", "m"), ("b", "m+1")]
+    assert expand_template(blocks, 3) == "aaabbbb"
+    assert expand_template(parse_template("a^{2m}b^m", ["a", "b"]), 2) == "aaaabb"
+    assert expand_template(parse_template("a^(2m) b", ["a", "b"]), 2) == "aaaab"
+    assert expand_template(parse_template("a^3b^m", ["a", "b"]), 2) == "aaabb"
+
+
+@pytest.mark.parametrize(
+    "template",
+    ["", "c^m", "a^m b^", "a^(m+) b", "a^m + b^m", "a^x"],
+)
+def test_parse_template_errors(template):
+    with pytest.raises(TemplateError):
+        parse_template(template, ["a", "b"])
+
+
+def test_expand_template_negative_exponent():
+    with pytest.raises(TemplateError):
+        expand_template(parse_template("a^(m-5)", ["a"]), 3)
+
+
+# ---------- 분할과 수비 ----------
+
+
+def test_split_count_and_conditions():
+    word = "aaaabbbb"
+    splits = analyze_splits(ANBN, word, 4)
+    assert len(splits) == 4 * 5 // 2  # 0 ≤ |x| < |xy| ≤ m 인 경우의 수
+    for s in splits:
+        x, y, z = s.parts(word)
+        assert len(x + y) <= 4 and len(y) >= 1 and x + y + z == word
+
+
+def test_good_receive_beats_every_split():
+    word = "aaaabbbb"  # a^m b^m, m = 4
+    assert all(s.breaking for s in analyze_splits(ANBN, word, 4))
+
+
+def test_bad_receive_has_unbeatable_split():
+    # aⁿbᵏ(k > n)에서 w = b^m을 고르면 y는 b로만 이루어진다.
+    # b를 늘리면(i ≥ 2) 여전히 L 안이고, 줄여도(i = 0) b가 하나 이상 남으면 L 안이다.
+    word = "bbbb"
+    splits = analyze_splits(A_LESS_B, word, 4)
+    assert any(not s.breaking for s in splits)  # Lemma가 받아낼 수 있는 코스가 있다
+
+
+def test_smash_needs_i_at_least_2_for_a_less_b():
+    word = "aaabbbb"  # a^m b^(m+1), m = 3
+    for s in analyze_splits(A_LESS_B, word, 3):
+        assert 0 not in s.breaking  # a를 줄이면 여전히 b가 더 많다
+        assert 2 in s.breaking
+
+
+def test_choose_defense_prefers_toughest():
+    word = "aaabbbb"
+    splits = analyze_splits(A_LESS_B, word, 3)
+    rng = random.Random(0)
+    split, mode = choose_defense(splits, rng, random_rate=0.0)
+    assert mode == "tough"
+    assert len(split.breaking) == min(len(s.breaking) for s in splits)
+
+
+def test_choose_defense_random_mode():
+    splits = analyze_splits(ANBN, "aaabbb", 3)
+    split, mode = choose_defense(splits, random.Random(0), random_rate=1.0)
+    assert mode == "random"
+    assert split in splits
+
+
+def test_pump():
+    assert pump("aaabbb", 1, 2, 0) == "aabbb"
+    assert pump("aaabbb", 1, 2, 3) == "aaaaabbb"
+    assert set(SMASH_VALUES) >= {0, 2}
+
+
+# ---------- 증명문 ----------
+
+
+def test_proof_for_anbn_uses_i_0():
+    proof = build_proof(ANBN, "a의 개수와 b의 개수가 같다", "a^m b^m", [3, 4, 5, 6, 7])
+    assert proof.available
+    assert proof.smash == 0
+    assert "w = a^{m}b^{m}" in proof.text and "다음 문자열을 고른다" in proof.text
+    assert "a^{m-k}b^{m}" in proof.text
+
+
+def test_proof_for_a_less_b_uses_i_2():
+    proof = build_proof(A_LESS_B, "b의 개수가 a의 개수보다 많다", "a^m b^(m+1)", [3, 4, 5, 6, 7])
+    assert proof.available
+    assert proof.smash == 2
+    assert "a^{m+k}b^{m+1}" in proof.text
+
+
+def test_proof_unavailable_when_first_block_short():
+    proof = build_proof(ANBN, "같다", "a b", [3, 4])
+    assert not proof.available  # w = ab는 첫 블록 길이 1 < m (게다가 |w| < m)
+
+
+def test_proof_unavailable_when_not_in_language():
+    proof = build_proof(A_LESS_B, "많다", "a^m b^m", [3, 4])
+    assert not proof.available
+    assert "L에 속하지 않아요" in proof.reason
+
+
+# ---------- 실수 비율과 분할 규칙 ----------
+
+
+def test_mistake_rate_decreases_with_points():
+    rates = [mistake_rate(p) for p in range(6)]
+    assert rates == [0.4, 0.3, 0.2, 0.1, 0.1, 0.1]
+
+
+def test_split_error():
+    assert split_error("aaabbb", 3, 0, 1) is None
+    assert split_error("aaabbb", 3, 1, 1) is not None  # |y| = 0
+    assert split_error("aaabbb", 3, 2, 4) is not None  # |xy| = 4 > m
+    assert split_error("aa", 3, 0, 3) is not None  # w 밖
+
+
+# ---------- 막는 쪽: 컴퓨터의 리시브와 스매시 ----------
+
+EVEN_A = BlockLanguage(["a"], "n0 % 2 == 0")  # (aa)*: 정규 언어
+A_STAR_B_STAR = BlockLanguage(["a", "b"], "n0 >= 0")  # a*b*: 정규 언어
+
+
+def test_candidate_words():
+    words = candidate_words(ANBN, 3)
+    assert words == ["aabb", "aaabbb", "aaaabbbb"]  # |w| ≥ 3, |w| ≤ 2·3 + 3
+    assert all(len(w) >= 3 and A_LESS_B.contains(w) for w in candidate_words(A_LESS_B, 3))
+
+
+def test_non_regular_language_always_has_winning_receive():
+    for language in (ANBN, A_LESS_B):
+        for m in range(1, 9):
+            winning, total = best_receives(language, m)
+            assert winning and total, m
+
+
+def test_regular_language_has_no_winning_receive_for_large_m():
+    # (aa)*는 m = 1이면 y = a 하나라 i = 0에서 홀수가 되지만, m ≥ 2면 y = aa로 언제나 막을 수 있다
+    assert best_receives(EVEN_A, 1)[0]
+    for m in range(2, 9):
+        assert best_receives(EVEN_A, m)[0] == []
+    for m in range(1, 9):
+        assert best_receives(A_STAR_B_STAR, m)[0] == []
+
+
+def test_choose_receive_best_and_mistake():
+    best = choose_receive(ANBN, 3, random.Random(0), rate=0.0)
+    assert best.mode == "best" and best.winning
+    # A_LESS_B는 뚫을 수 없는 코스가 있는 약한 w도 후보에 있다
+    mistake = choose_receive(A_LESS_B, 3, random.Random(0), rate=1.0)
+    assert mistake.mode == "mistake" and not mistake.winning
+
+
+def test_choose_receive_none_when_no_candidates():
+    empty = BlockLanguage(["a"], "n0 == 1")  # 유한 언어 {a}: m = 3 이상인 w가 없다
+    assert choose_receive(empty, 3, random.Random(0), rate=0.0) is None
+
+
+def test_computer_smash():
+    assert computer_smash(ANBN, "aaabbb", 0, 1) == 0
+    assert computer_smash(EVEN_A, "aaaa", 0, 2) is None  # y = aa는 몇 번 펌핑해도 짝수
+    assert computer_smash(EVEN_A, "aaaa", 0, 1) == 0  # y = a는 i = 0에서 홀수
+
+
+# ---------- 길이 상한 (검토에서 찾은 문제) ----------
+
+
+def test_huge_exponent_is_rejected_before_building_string():
+    """a^(10000000000)처럼 지수가 커도 문자열을 만들기 전에 거부한다 (메모리 고갈 방지)."""
+    import time
+
+    start = time.perf_counter()
+    with pytest.raises(WordTooLongError):
+        expand_template(parse_template("a^(10000000000)", ["a"]), 3)
+    assert time.perf_counter() - start < 0.5
+
+
+def test_receive_length_leaves_room_for_pumping():
+    for m in range(1, 9):
+        limit = max_receive_length(m)
+        assert limit + (max(SMASH_VALUES) - 1) * m <= 200
+
+
+def test_proof_with_too_long_template_is_unavailable_not_error():
+    # m = 3에서는 리시브할 수 있지만 m = 7에서는 너무 긴 w
+    proof = build_proof(ANBN, "같다", "a^(14m) b^(14m)", [3, 4, 5, 6, 7])
+    assert not proof.available
+    assert "너무 길어요" in proof.reason

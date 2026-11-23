@@ -153,3 +153,147 @@ def test_diagram_highlights_counterexample():
 def test_diagram_skips_highlight_for_invalid_machine():
     broken = {**DFA_WRONG, "start": ""}
     assert "penwidth=2" not in api.diagram(broken, counterexample="a")
+
+
+# ---------- 펌핑 게임 ----------
+
+
+def test_list_pumping_stages_hides_answers():
+    stages = api.list_pumping_stages()
+    assert len(stages) >= 2
+    assert roundtrips_as_json(stages)
+    assert set(stages[0]) == {"id", "chapter", "title", "description", "hint", "hint_defend", "notation",
+                              "alphabet", "m_values"}
+    assert all("regular" not in s for s in stages)  # 정규 언어인지는 경기 뒤에만 알려준다
+
+
+def test_pumping_receive_ok_and_errors():
+    ok = api.pumping_receive("pump-01", "a^m b^m", 3)
+    assert ok == {"ok": True, "word": "aaabbb", "error": None, "kind": None}
+    assert api.pumping_receive("pump-01", "c^m", 3)["kind"] == "parse"
+    assert api.pumping_receive("pump-01", "a b", 3)["kind"] == "too_short"
+    assert api.pumping_receive("pump-02", "a^m b^m", 3)["kind"] == "not_in_language"
+    # 검토에서 찾은 문제: 펌핑하면 판정 상한을 넘는 긴 w는 리시브 단계에서 돌려보낸다
+    long_w = api.pumping_receive("pump-01", "a^(14m) b^(14m)", 7)
+    assert long_w["ok"] is False and long_w["kind"] == "too_long"
+    assert api.pumping_receive("pump-01", "a^(10000000000)", 3)["kind"] == "too_long"
+    for result in [ok, api.pumping_receive("pump-01", "c^m", 3)]:
+        assert roundtrips_as_json(result)
+
+
+def test_pumping_defend_follows_split_rules_and_hides_breaking():
+    word = "aaaabbbb"
+    for seed in range(20):
+        d = api.pumping_defend("pump-01", word, 4, seed=seed)
+        assert roundtrips_as_json(d)
+        assert set(d) == {"ok", "error", "start", "end", "x", "y", "z", "mode"}
+        assert d["ok"] is True and d["error"] is None
+        assert d["x"] + d["y"] + d["z"] == word
+        assert len(d["x"] + d["y"]) <= 4 and len(d["y"]) >= 1
+        assert d["mode"] in {"tough", "random"}
+
+
+def test_pumping_defend_is_reproducible_with_seed():
+    assert api.pumping_defend("pump-01", "aaabbb", 3, seed=7) == api.pumping_defend("pump-01", "aaabbb", 3, seed=7)
+
+
+def test_pumping_smash_and_analysis():
+    smash = api.pumping_smash("pump-01", "aaabbb", 3, 0, 1, 0)
+    assert smash == {"ok": True, "error": None, "pumped": "aabbb", "in_language": False}
+    analysis = api.pumping_analysis("pump-01", "aaabbb", 3)
+    assert roundtrips_as_json(analysis)
+    assert analysis["ok"] and analysis["total"] == 6 and analysis["beaten"] == 6
+    # aⁿbᵏ(k > n)에서 w = b^4는 막을 수 있는 코스가 있다
+    weak = api.pumping_analysis("pump-02", "bbbb", 4)
+    assert weak["beaten"] < weak["total"]
+
+
+def test_pumping_proof():
+    proof = api.pumping_proof("pump-02", "a^m b^(m+1)")
+    assert roundtrips_as_json(proof)
+    assert proof["available"] and proof["smash"] == 2
+    missing = api.pumping_proof("pump-02", "b^m")
+    assert missing["available"] is False and missing["reason"]
+
+
+def test_pumping_unknown_stage():
+    with pytest.raises(KeyError):
+        api.pumping_receive("없는-스테이지", "a^m", 3)
+
+
+
+# ---------- 펌핑 게임: 막는 쪽 ----------
+
+
+def test_pumping_mistake_rate():
+    assert [api.pumping_mistake_rate(p) for p in range(5)] == [0.4, 0.3, 0.2, 0.1, 0.1]
+
+
+def test_pumping_computer_receive():
+    for seed in range(10):
+        r = api.pumping_computer_receive("pump-01", 3, point=0, seed=seed)
+        assert roundtrips_as_json(r)
+        assert r["ok"] and len(r["word"]) >= 3 and r["mode"] in {"best", "mistake"}
+    assert api.pumping_computer_receive("pump-01", 0)["ok"] is False
+    assert api.pumping_computer_receive("pump-01", api.MAX_SERVE + 1)["ok"] is False
+
+
+def test_pumping_computer_smash_on_regular_language():
+    # (aa)*: y = aa는 막히고, y = a는 i = 0에 뚫린다
+    held = api.pumping_computer_smash("pump-03", "aaaa", 3, 0, 2)
+    assert held == {"ok": True, "error": None, "i": None, "pumped": None, "in_language": True}
+    broken = api.pumping_computer_smash("pump-03", "aaaa", 3, 0, 1)
+    assert broken == {"ok": True, "error": None, "i": 0, "pumped": "aaa", "in_language": False}
+    invalid = api.pumping_computer_smash("pump-03", "aaaa", 3, 2, 4)  # |xy| = 4 > m
+    assert invalid["ok"] is False and invalid["error"]
+    assert roundtrips_as_json(invalid)
+
+
+def test_pumping_best_receive_and_reveal():
+    non_regular = api.pumping_best_receive("pump-01", 4)
+    assert non_regular["winning_count"] >= 1 and non_regular["winning_words"]
+    regular = api.pumping_best_receive("pump-04", 4)
+    assert regular["ok"] and regular["winning_count"] == 0 and regular["total"] > 0
+    assert roundtrips_as_json(regular)
+    assert api.pumping_reveal("pump-01") == {"regular": False}
+    assert api.pumping_reveal("pump-03") == {"regular": True}
+
+
+
+# ---------- 펌핑 api 입력 확인: 잘못된 입력에도 예외 대신 ok=False ----------
+
+BAD_WORD_CASES = [
+    ("aaabb", 3),  # L에 속하지 않음
+    ("ab", 3),  # |w| < m
+    ("a" * 100 + "b" * 100, 7),  # 길이 상한 초과 (펌핑하면 판정 상한을 넘음)
+    ("aacbb", 3),  # 언어의 글자가 아님
+    (123, 3),  # 문자열이 아님
+    ("aaabbb", 0),  # m이 범위 밖
+    ("aaabbb", "3"),  # m이 정수가 아님
+]
+
+
+@pytest.mark.parametrize("word, m", BAD_WORD_CASES)
+def test_pumping_api_rejects_bad_word(word, m):
+    for result in (
+        api.pumping_defend("pump-01", word, m, seed=0),
+        api.pumping_analysis("pump-01", word, m),
+        api.pumping_smash("pump-01", word, m, 0, 1, 0),
+    ):
+        assert result["ok"] is False and result["error"]
+        assert roundtrips_as_json(result)
+
+
+@pytest.mark.parametrize("start, end, i", [(1, 1, 0), (2, 4, 0), (0, 1, 1), (0, 1, 9), ("0", 1, 0)])
+def test_pumping_smash_rejects_bad_split_or_i(start, end, i):
+    result = api.pumping_smash("pump-01", "aaabbb", 3, start, end, i)
+    assert result["ok"] is False and result["error"]
+
+
+def test_defender_api_rejects_bad_input():
+    assert api.pumping_computer_smash("pump-03", "aaa", 3, 0, 2)["ok"] is False  # aaa는 L 밖
+    assert api.pumping_computer_smash("pump-03", "aaaa", api.MAX_SERVE + 1, 0, 2)["ok"] is False
+    assert api.pumping_best_receive("pump-01", 0)["ok"] is False
+    assert api.pumping_receive("pump-01", "a^m b^m", 0)["kind"] == "bad_m"
+    assert api.pumping_receive("pump-01", None, 3)["ok"] is False
+    assert api.pumping_proof("pump-01", None)["available"] is False

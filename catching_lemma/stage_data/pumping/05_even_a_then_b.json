@@ -1,0 +1,39 @@
+{
+  "id": "pump-05",
+  "chapter": "pumping",
+  "title": "a²ⁿbᵏ",
+  "description": "a가 짝수 개 나온 뒤 b가 0개 이상 나오는 문자열의 언어예요.",
+  "hint": "w가 aa로 시작할 때와 b로 시작할 때, Lemma가 y를 어떻게 잡을지 생각해보세요.",
+  "hint_defend": "w가 a로 시작하면 y = aa, b로 시작하면 y = b처럼, w에 따라 y를 다르게 잡아보세요.",
+  "regular": true,
+  "language": {
+    "notation": "L = \\{\\, a^{2n} b^k \\mid n, k \\ge 0 \\,\\}",
+    "blocks": [
+      "a",
+      "b"
+    ],
+    "constraint": "n0 % 2 == 0",
+    "condition_text": "a의 개수가 짝수다"
+  },
+  "m_values": [
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "examples": {
+    "accept": [
+      "",
+      "aa",
+      "b",
+      "aabbb"
+    ],
+    "reject": [
+      "a",
+      "ab",
+      "aaab",
+      "ba"
+    ]
+  }
+}

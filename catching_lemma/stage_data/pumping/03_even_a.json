@@ -1,0 +1,35 @@
+{
+  "id": "pump-03",
+  "chapter": "pumping",
+  "title": "a²ⁿ",
+  "description": "a가 짝수 개 있는 문자열의 언어예요.",
+  "hint": "Lemma가 y를 짝수 길이로 잡으면 펌핑해도 어떻게 될까요?",
+  "hint_defend": "y를 몇 글자로 잡아야 몇 번을 펌핑해도 짝수가 유지될까요? m은 그 길이 이상이어야 해요.",
+  "regular": true,
+  "language": {
+    "notation": "L = \\{\\, a^{2n} \\mid n \\ge 0 \\,\\}",
+    "blocks": [
+      "a"
+    ],
+    "constraint": "n0 % 2 == 0",
+    "condition_text": "a의 개수가 짝수다"
+  },
+  "m_values": [
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "examples": {
+    "accept": [
+      "",
+      "aa",
+      "aaaa"
+    ],
+    "reject": [
+      "a",
+      "aaa"
+    ]
+  }
+}
