@@ -14,6 +14,7 @@ from .engine import (
     find_counterexample,
     minimal_state_count,
 )
+from .engine.pumping import BlockLanguage
 
 STAGE_DIR = Path(__file__).parent / "stage_data"
 
@@ -51,9 +52,12 @@ def to_dfa(automaton: DFA | NFA) -> DFA:
 
 
 def load_stages(chapter: str | None = None) -> list[Stage]:
+    """오토마타 설계 스테이지(DFA, NFA). 펌핑 게임 스테이지는 load_pumping_stages()로 불러온다."""
     stages = []
     for path in sorted(STAGE_DIR.glob("*/*.json")):
         data = json.loads(path.read_text(encoding="utf-8"))
+        if data["chapter"] in PUMPING_CHAPTERS:
+            continue
         if chapter and data["chapter"] != chapter:
             continue
         examples = data.get("examples", {})
@@ -98,3 +102,55 @@ def grade(stage: Stage, candidate: DFA | NFA) -> GradeResult:
         expected=reference.accepts(cex),
         optimal_states=optimal,
     )
+
+
+# ---------- 펌핑 게임 스테이지 ----------
+
+PUMPING_CHAPTERS = {"pumping"}
+
+
+@dataclass
+class PumpingStage:
+    id: str
+    chapter: str  # "pumping"
+    title: str
+    description: str
+    notation: str  # 언어 표기 (LaTeX)
+    condition_text: str  # 증명문에 쓰는 조건 설명. 예: "a의 개수와 b의 개수가 같다"
+    language: BlockLanguage
+    m_values: list[int]  # 깨는 쪽 게임에서 포인트마다 Lemma가 서브하는 m
+    regular: bool  # 정규 언어인지. 화면에는 경기가 끝난 뒤에만 알려준다.
+    hint: str = ""  # 깨는 쪽 힌트
+    hint_defend: str = ""  # 막는 쪽 힌트
+    examples_accept: list[str] = field(default_factory=list)
+    examples_reject: list[str] = field(default_factory=list)
+    sample_receive: str = ""  # 정규가 아닌 언어에서 이기는 w 템플릿 예시. 테스트에서만 쓰고 화면에는 보내지 않는다.
+
+
+def load_pumping_stages() -> list[PumpingStage]:
+    stages = []
+    for path in sorted(STAGE_DIR.glob("*/*.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if data["chapter"] not in PUMPING_CHAPTERS:
+            continue
+        lang = data["language"]
+        examples = data.get("examples", {})
+        stages.append(
+            PumpingStage(
+                id=data["id"],
+                chapter=data["chapter"],
+                title=data["title"],
+                description=data["description"],
+                notation=lang["notation"],
+                condition_text=lang["condition_text"],
+                language=BlockLanguage(blocks=list(lang["blocks"]), constraint=lang["constraint"]),
+                m_values=list(data["m_values"]),
+                regular=bool(data["regular"]),
+                hint=data.get("hint", ""),
+                hint_defend=data.get("hint_defend", ""),
+                examples_accept=examples.get("accept", []),
+                examples_reject=examples.get("reject", []),
+                sample_receive=data.get("sample_receive", ""),
+            )
+        )
+    return stages
