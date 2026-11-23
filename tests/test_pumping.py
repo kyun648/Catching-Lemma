@@ -49,6 +49,27 @@ def test_evaluate_rejects_unsafe_or_unknown(expr):
         evaluate(expr, {"n0": 1, "m": 1})
 
 
+def test_evaluate_arithmetic_only():
+    assert evaluate("2*(m+1)-3", {"m": 4}, arithmetic_only=True) == 7
+    for expr in ["is_prime(m)", "m // 2", "m % 2", "m == 3", "not m", "m and 1"]:
+        with pytest.raises(ExpressionError):
+            evaluate(expr, {"m": 4}, arithmetic_only=True)
+
+
+def test_is_prime_is_fast_and_correct_for_large_numbers():
+    import time
+
+    start = time.perf_counter()
+    assert evaluate("is_prime(n0)", {"n0": 10**18 + 9}) is True  # 10^18 다음 소수
+    assert evaluate("is_prime(n0)", {"n0": 10**18 + 1}) is False
+    assert evaluate("is_prime(n0)", {"n0": 561}) is False  # 카마이클 수
+    assert time.perf_counter() - start < 0.5
+    small = [n for n in range(60) if evaluate("is_prime(n0)", {"n0": n})]
+    assert small == [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59]
+    with pytest.raises(ExpressionError):
+        evaluate("is_prime(n0)", {"n0": 10**40})
+
+
 # ---------- 블록 언어 ----------
 
 
@@ -85,7 +106,12 @@ def test_parse_and_expand_template():
 
 @pytest.mark.parametrize(
     "template",
-    ["", "c^m", "a^m b^", "a^(m+) b", "a^m + b^m", "a^x"],
+    [
+        "", "c^m", "a^m b^", "a^(m+) b", "a^m + b^m", "a^x",
+        # 지수에는 정수, m, + - *, 괄호만 (함수 호출, 나눗셈, 비교, 참/거짓은 안 됨)
+        "a^{is_prime(m)}", "a^{m//2}", "a^{m%2}", "a^{m==3}", "a^{not m}", "a^{m>1 and m}",
+        "a^m" * 40,  # 템플릿 길이 상한
+    ],
 )
 def test_parse_template_errors(template):
     with pytest.raises(TemplateError):
@@ -95,6 +121,14 @@ def test_parse_template_errors(template):
 def test_expand_template_negative_exponent():
     with pytest.raises(TemplateError):
         expand_template(parse_template("a^(m-5)", ["a"]), 3)
+
+
+def test_expand_template_converts_expression_error():
+    # parse_template을 거치지 않은 블록이 들어와도 ExpressionError가 아니라 TemplateError로 알린다
+    with pytest.raises(TemplateError):
+        expand_template([("a", "m // 0")], 3)
+    with pytest.raises(TemplateError):
+        expand_template([("a", "m == 3")], 3)
 
 
 # ---------- 분할과 수비 ----------
@@ -167,6 +201,31 @@ def test_proof_for_a_less_b_uses_i_2():
     assert proof.available
     assert proof.smash == 2
     assert "a^{m+k}b^{m+1}" in proof.text
+
+
+def test_proof_keeps_multiplication_in_exponent():
+    # 2*(m+1)을 '2(m+1)'처럼 곱셈 없이 이어 쓰지 않고 정리된 일차식으로 쓴다
+    lang = BlockLanguage(["a", "b"], "n1 == 2 * n0")
+    proof = build_proof(lang, "b가 a의 두 배", "a^{m} b^{2*(m+1)-2}", [3, 4, 5, 6, 7])
+    assert proof.available
+    assert "w = a^{m}b^{2m}" in proof.text
+    assert "2(m" not in proof.text
+
+
+def test_proof_requires_first_block_at_least_m_for_every_m():
+    # a^7 b^7은 m = 3~7에서는 첫 블록 ≥ m이지만 m = 8부터 아니다 → 증명문을 쓰지 않는다
+    proof = build_proof(ANBN, "같다", "a^7 b^7", [3, 4, 5, 6, 7])
+    assert not proof.available
+    assert "첫 블록" in proof.reason
+    # 2m-1 ≥ m (m ≥ 1)은 통과, m-1은 통과하지 않음
+    assert build_proof(ANBN, "같다", "a^(2m-1) b^(2m-1)", [3, 4, 5]).available
+    assert not build_proof(ANBN, "같다", "a^(m-1) b^(m-1)", [3, 4, 5]).available
+
+
+def test_proof_unavailable_for_non_affine_exponent():
+    proof = build_proof(ANBN, "같다", "a^{m*m} b^{m*m}", [3, 4])
+    assert not proof.available
+    assert "일차식" in proof.reason
 
 
 def test_proof_unavailable_when_first_block_short():

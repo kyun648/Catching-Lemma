@@ -306,7 +306,8 @@ def pumping_smash(stage_id: str, word: str, m: int, start: int, end: int, i: int
     """
     stage = _find_pumping_stage(stage_id)
     error = _word_error(stage, word, m) or _split_check(word, m, start, end)
-    if error is None and i not in SMASH_VALUES:
+    # bool(True == 1)이나 1.0 같은 값이 i로 들어오지 않도록 정수 타입을 먼저 확인한다.
+    if error is None and (type(i) is not int or i not in SMASH_VALUES):
         error = f"i는 {', '.join(map(str, SMASH_VALUES))} 중에서 골라야 해요."
     if error:
         return {"ok": False, "error": error, "pumped": None, "in_language": None}

@@ -79,3 +79,18 @@ def test_regular_flag_matches_game_behavior(stage):
 @pytest.mark.parametrize("stage", STAGES, ids=lambda s: s.id)
 def test_both_role_hints(stage):
     assert stage.hint and stage.hint_defend
+
+
+def test_readme_example_stage_id_is_not_taken():
+    """README의 '언어 추가하기' 예시를 그대로 복사해도 기존 스테이지 id와 겹치지 않아야 한다."""
+    import json
+    import re
+    from pathlib import Path
+
+    readme = (Path(__file__).resolve().parent.parent / "README.md").read_text(encoding="utf-8")
+    examples = [json.loads(block) for block in re.findall(r"```json\n(.*?)```", readme, re.S)]
+    pumping = [e for e in examples if e.get("chapter") == "pumping"]
+    assert pumping
+    taken = {s.id for s in STAGES} | {s.id for s in load_stages()}
+    for example in pumping:
+        assert example["id"] not in taken

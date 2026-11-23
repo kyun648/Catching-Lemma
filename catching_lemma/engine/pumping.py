@@ -41,10 +41,37 @@ def _is_square(n: int) -> bool:
     return n >= 0 and math.isqrt(n) ** 2 == n
 
 
+_PRIME_BASES = (2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41)
+MAX_PRIME_INPUT = 3_317_044_064_679_887_385_961_981  # 위 밑(base)들로 밀러-라빈 판정이 정확한 상한
+
+
 def _is_prime(n: int) -> bool:
+    """밀러-라빈 소수 판정. 나눗셈을 √n까지 해보는 방식과 달리 큰 수에서도 바로 끝난다.
+
+    MAX_PRIME_INPUT 이하에서는 정확하고, 그보다 큰 수는 받지 않는다.
+    """
+    if n > MAX_PRIME_INPUT:
+        raise ExpressionError("is_prime()에 넣을 수 있는 수보다 커요.")
     if n < 2:
         return False
-    return all(n % d for d in range(2, math.isqrt(n) + 1))
+    for p in _PRIME_BASES:
+        if n % p == 0:
+            return n == p
+    d, r = n - 1, 0
+    while d % 2 == 0:
+        d //= 2
+        r += 1
+    for a in _PRIME_BASES:
+        x = pow(a, d, n)
+        if x in (1, n - 1):
+            continue
+        for _ in range(r - 1):
+            x = x * x % n
+            if x == n - 1:
+                break
+        else:
+            return False
+    return True
 
 
 FUNCTIONS = {"is_square": _is_square, "is_prime": _is_prime}
@@ -66,8 +93,17 @@ _COMPARE = {
 }
 
 
-def evaluate(expr: str, variables: dict[str, int]):
-    """정수 산술(+, -, *, //, %), 비교, and/or/not, is_square/is_prime만 허용하는 계산기."""
+# 플레이어가 입력하는 지수식에서 쓸 수 있는 연산 (함수, 비교, 나눗셈은 쓸 수 없다)
+_ARITHMETIC = {ast.Add, ast.Sub, ast.Mult}
+
+
+def evaluate(expr: str, variables: dict[str, int], *, arithmetic_only: bool = False):
+    """eval을 쓰지 않는 계산기.
+
+    기본(스테이지 JSON의 조건식): 정수 산술(+, -, *, //, %), 비교, and/or/not, is_square/is_prime.
+    arithmetic_only=True(플레이어가 입력하는 지수식): 정수, 변수, +, -, *, 괄호만 허용한다.
+    함수 호출이나 비교를 막아서 계산이 오래 걸리거나 참/거짓이 지수로 쓰이는 일을 막는다.
+    """
     try:
         tree = ast.parse(expr, mode="eval")
     except SyntaxError as e:
@@ -83,9 +119,13 @@ def evaluate(expr: str, variables: dict[str, int]):
                 raise ExpressionError(f"'{node.id}'는 쓸 수 없는 이름이에요.")
             return variables[node.id]
         if isinstance(node, ast.BinOp) and type(node.op) in _BINARY:
+            if arithmetic_only and type(node.op) not in _ARITHMETIC:
+                raise ExpressionError(f"식 '{expr}'에는 +, -, *만 쓸 수 있어요.")
             return _BINARY[type(node.op)](ev(node.left), ev(node.right))
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
             return -ev(node.operand)
+        if arithmetic_only:
+            raise ExpressionError(f"식 '{expr}'에는 정수, m, +, -, *, 괄호만 쓸 수 있어요.")
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
             return not ev(node.operand)
         if isinstance(node, ast.BoolOp):
@@ -165,11 +205,19 @@ def _normalize_exponent(raw: str) -> str:
     return body.strip()
 
 
+MAX_TEMPLATE_LENGTH = 100  # w 템플릿 입력 글자 수 상한
+
+
 def parse_template(template: str, alphabet: list[str]) -> list[tuple[str, str]]:
-    """'a^m b^(m+1)' → [('a', 'm'), ('b', 'm+1')]. 지수가 없으면 '1'."""
+    """'a^m b^(m+1)' → [('a', 'm'), ('b', 'm+1')]. 지수가 없으면 '1'.
+
+    지수에는 정수, m, +, -, *, 괄호만 쓸 수 있다 (evaluate의 arithmetic_only).
+    """
     text = template.strip()
     if not text:
         raise TemplateError("w를 입력해주세요. 예: a^m b^m")
+    if len(text) > MAX_TEMPLATE_LENGTH:
+        raise TemplateError(f"w는 {MAX_TEMPLATE_LENGTH}글자 이내로 적어주세요.")
     blocks, pos = [], 0
     while pos < len(text):
         match = _TOKEN.match(text, pos)
@@ -180,9 +228,9 @@ def parse_template(template: str, alphabet: list[str]) -> list[tuple[str, str]]:
             raise TemplateError(f"'{ch}'는 이 언어의 글자가 아니에요. 쓸 수 있는 글자: {', '.join(alphabet)}")
         expr = _normalize_exponent(raw) if raw else "1"
         try:
-            evaluate(expr, {"m": 1})
+            evaluate(expr, {"m": 1}, arithmetic_only=True)
         except ExpressionError as e:
-            raise TemplateError(f"지수 '{raw}'를 계산할 수 없어요. m과 정수, +, -, *만 쓸 수 있어요.") from e
+            raise TemplateError(f"지수 '{raw}'를 계산할 수 없어요. 정수, m, +, -, *, 괄호만 쓸 수 있어요.") from e
         blocks.append((ch, expr))
         pos = match.end()
     return blocks
@@ -208,8 +256,11 @@ def expand_template(blocks: list[tuple[str, str]], m: int, max_length: int = MAX
     """
     lengths = []
     for ch, expr in blocks:
-        n = evaluate(expr, {"m": m})
-        if not isinstance(n, int) or n < 0:
+        try:
+            n = evaluate(expr, {"m": m}, arithmetic_only=True)
+        except ExpressionError as e:
+            raise TemplateError(f"m = {m}일 때 지수 '{expr}'를 계산할 수 없어요. {e}") from e
+        if type(n) is not int or n < 0:
             raise TemplateError(f"m = {m}일 때 지수 '{expr}'가 0 이상의 정수가 아니에요.")
         lengths.append(n)
     total = sum(lengths)
@@ -352,21 +403,74 @@ def computer_smash(language: BlockLanguage, word: str, start: int, end: int) -> 
 # ---------- 증명문 ----------
 
 
-def _latex_exponent(expr: str) -> str:
-    return expr.replace("*", "").replace(" ", "")
+def _polynomial(expr: str) -> dict[int, int]:
+    """지수식을 m에 대한 다항식 {차수: 계수}로 바꾼다. 예: '2*(m+1)' → {1: 2, 0: 2}.
+
+    parse_template을 통과한 식(정수, m, +, -, *, 괄호)만 받는다.
+    """
+
+    def add(p, q, sign=1):
+        r = dict(p)
+        for d, c in q.items():
+            r[d] = r.get(d, 0) + sign * c
+        return {d: c for d, c in r.items() if c}
+
+    def mul(p, q):
+        r: dict[int, int] = {}
+        for d1, c1 in p.items():
+            for d2, c2 in q.items():
+                r[d1 + d2] = r.get(d1 + d2, 0) + c1 * c2
+        return {d: c for d, c in r.items() if c}
+
+    def conv(node):
+        if isinstance(node, ast.Expression):
+            return conv(node.body)
+        if isinstance(node, ast.Constant) and type(node.value) is int:
+            return {0: node.value} if node.value else {}
+        if isinstance(node, ast.Name) and node.id == "m":
+            return {1: 1}
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub):
+            return {d: -c for d, c in conv(node.operand).items()}
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            return add(conv(node.left), conv(node.right))
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Sub):
+            return add(conv(node.left), conv(node.right), -1)
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mult):
+            return mul(conv(node.left), conv(node.right))
+        raise ExpressionError(f"식 '{expr}'에는 정수, m, +, -, *, 괄호만 쓸 수 있어요.")
+
+    try:
+        return conv(ast.parse(expr, mode="eval"))
+    except SyntaxError as e:
+        raise ExpressionError(f"식 '{expr}'를 해석할 수 없어요.") from e
 
 
-def _pumped_exponent(expr: str, i: int) -> str:
-    base = _latex_exponent(expr)
-    if i == 0:
-        return f"{base}-k"
-    if i == 2:
-        return f"{base}+k"
-    return f"{base}+{i - 1}k"
+def _affine(expr: str) -> tuple[int, int] | None:
+    """지수식이 a·m + b 꼴이면 (a, b), 아니면(m² 등) None."""
+    poly = _polynomial(expr)
+    if any(d > 1 for d in poly):
+        return None
+    return poly.get(1, 0), poly.get(0, 0)
 
 
-def _block_latex(blocks: list[tuple[str, str]]) -> str:
-    return "".join(ch if e == "1" else f"{ch}^{{{_latex_exponent(e)}}}" for ch, e in blocks)
+def _affine_latex(a: int, b: int, extra: str = "") -> str:
+    """(2, -1) → '2m-1'. extra는 뒤에 붙일 항(예: '-k')."""
+    terms = []
+    if a:
+        terms.append({1: "m", -1: "-m"}.get(a, f"{a}m"))
+    if b or not (a or extra):
+        terms.append(f"{b:+d}" if terms else str(b))
+    text = "".join(terms) + extra
+    return text.lstrip("+") if text.startswith("+") else text
+
+
+def _pumped_exponent(coef: tuple[int, int], i: int) -> str:
+    extra = {0: "-k", 2: "+k"}.get(i, f"+{i - 1}k")
+    return _affine_latex(*coef, extra=extra)
+
+
+def _block_latex(blocks: list[tuple[str, tuple[int, int]]]) -> str:
+    return "".join(ch if c == (0, 1) else f"{ch}^{{{_affine_latex(*c)}}}" for ch, c in blocks)
 
 
 @dataclass
@@ -387,16 +491,30 @@ def build_proof(
     """경기 기록(w 템플릿)을 교재 형식의 증명문으로 정리한다.
 
     자동으로 쓸 수 있는 경우만 다룬다:
-    - 검사한 모든 m에서 w ∈ L이고 첫 블록 길이가 m 이상이다 → y는 첫 블록 글자로만 이루어진다 (y = c^k)
-    - 하나의 i가 검사한 모든 m, 모든 분할에서 w를 L 밖으로 보낸다
-    이 검사는 유한한 m에 대한 확인이므로, 증명문 끝에 보조 검증 범위를 밝힌다.
+    - 모든 지수가 m에 대한 일차식(a·m + b)이다
+    - 모든 m ≥ 1에서 첫 블록 길이가 m 이상이다 (식으로 확인) → y는 첫 블록 글자로만 이루어진다 (y = c^k)
+    - 검사한 m에서 w ∈ L이고, 하나의 i가 검사한 모든 m, 모든 분할에서 w를 L 밖으로 보낸다
+    셋째 조건은 유한한 m에 대한 확인이므로, 증명문 끝에 보조 검증 범위를 밝힌다.
     """
     try:
         blocks = parse_template(template, language.alphabet)
-    except TemplateError as e:
+        coefs = [_affine(expr) for _, expr in blocks]
+    except (TemplateError, ExpressionError) as e:
         return ProofResult(False, reason=str(e))
 
-    first_ch, first_expr = blocks[0]
+    if any(c is None for c in coefs):
+        return ProofResult(False, reason="지수가 m에 대한 일차식(예: 2m+1)이 아니면 증명문을 자동으로 쓰지 않아요.")
+    (a, b), rest = coefs[0], coefs[1:]
+    if a < 1 or (a - 1) + b < 0:
+        # a·m + b ≥ m 이 모든 m ≥ 1에서 성립 ⇔ a ≥ 1 이고 m = 1에서 성립
+        return ProofResult(
+            False,
+            reason="첫 블록의 길이가 m보다 짧아질 수 있는 w는 y가 여러 블록에 걸칠 수 있어서, 증명문을 자동으로 쓰지 않아요.",
+        )
+    if any(ra < 0 or ra + rb < 0 for ra, rb in rest):
+        return ProofResult(False, reason="m에 따라 지수가 음수가 되는 블록이 있어서 증명문을 자동으로 쓰지 않아요.")
+
+    first_ch = blocks[0][0]
     words = {}
     for m in checked_m:
         # 경기에서 쓴 m보다 큰 m으로도 검사하므로, 리시브와 같은 길이 상한을 여기서도 지킨다.
@@ -406,11 +524,6 @@ def build_proof(
             return ProofResult(False, reason=f"증명문을 확인하는 중에 멈췄어요. {e}")
         if not language.contains(word):
             return ProofResult(False, reason=f"m = {m}일 때 w가 L에 속하지 않아요.")
-        if evaluate(first_expr, {"m": m}) < m:
-            return ProofResult(
-                False,
-                reason="첫 블록의 길이가 m보다 짧은 w는 y가 여러 블록에 걸칠 수 있어서, 증명문을 자동으로 쓰지 않아요.",
-            )
 
     smash = None
     for i in SMASH_VALUES:
@@ -428,9 +541,10 @@ def build_proof(
             checked_m=checked_m,
         )
 
-    w = _block_latex(blocks)
-    pumped_blocks = [(first_ch, _pumped_exponent(first_expr, smash))] + blocks[1:]
-    pumped = "".join(f"{ch}^{{{e}}}" if e != "1" else ch for ch, e in pumped_blocks)
+    w = _block_latex([(ch, c) for (ch, _), c in zip(blocks, coefs)])
+    pumped = f"{first_ch}^{{{_pumped_exponent((a, b), smash)}}}" + _block_latex(
+        [(ch, c) for (ch, _), c in zip(blocks[1:], rest)]
+    )
     lo, hi = min(checked_m), max(checked_m)
     text = "\n\n".join(
         [
@@ -441,8 +555,9 @@ def build_proof(
             f"$i = {smash}$일 때 $xy^{{{smash}}}z = {pumped}$이다. "
             f"$k \\ge 1$이므로 이 문자열은 '{condition_text}'라는 조건을 만족하지 않아 $L$에 속하지 않는다.",
             "이는 펌핑 보조정리에 모순이므로 $L$은 정규 언어가 아니다. $\\blacksquare$",
-            f"*보조 검증: m = {lo}~{hi}의 모든 분할에서 i = {smash}일 때 L 밖이 되는 것을 확인했어요. "
-            "이 확인은 유한한 m에 대한 것이므로, 넷째 문단의 '조건을 만족하지 않는다'는 직접 따져서 확인해보세요.*",
+            f"*보조 검증: m = {lo}~{hi}에서 w ∈ L이고, 모든 분할에서 i = {smash}일 때 L 밖이 되는 것을 확인했어요. "
+            "첫 블록이 m글자 이상이라는 것은 모든 m에서 식으로 확인했지만, 나머지는 유한한 m에 대한 확인이므로 "
+            "둘째 문단의 'w ∈ L'과 넷째 문단의 '조건을 만족하지 않는다'는 직접 따져서 확인해보세요.*",
         ]
     )
     return ProofResult(True, text=text, smash=smash, checked_m=checked_m)

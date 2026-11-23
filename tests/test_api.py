@@ -284,7 +284,10 @@ def test_pumping_api_rejects_bad_word(word, m):
         assert roundtrips_as_json(result)
 
 
-@pytest.mark.parametrize("start, end, i", [(1, 1, 0), (2, 4, 0), (0, 1, 1), (0, 1, 9), ("0", 1, 0)])
+@pytest.mark.parametrize(
+    "start, end, i",
+    [(1, 1, 0), (2, 4, 0), (0, 1, 1), (0, 1, 9), ("0", 1, 0), (0, 1, "2"), (0, 1, None), (0, 1, 2.0), (0, 1, False)],
+)
 def test_pumping_smash_rejects_bad_split_or_i(start, end, i):
     result = api.pumping_smash("pump-01", "aaabbb", 3, start, end, i)
     assert result["ok"] is False and result["error"]
@@ -297,3 +300,15 @@ def test_defender_api_rejects_bad_input():
     assert api.pumping_receive("pump-01", "a^m b^m", 0)["kind"] == "bad_m"
     assert api.pumping_receive("pump-01", None, 3)["ok"] is False
     assert api.pumping_proof("pump-01", None)["available"] is False
+
+
+@pytest.mark.parametrize("template", ["a^{is_prime(10**18)}", "a^{m//0}", "a^{m==3} b^m", "a^{m%2}"])
+def test_pumping_receive_rejects_non_arithmetic_exponent(template):
+    """지수에 함수, 나눗셈, 비교를 넣으면 오래 계산하거나 예외가 나지 않고 parse 오류로 돌아온다."""
+    import time
+
+    start = time.perf_counter()
+    result = api.pumping_receive("pump-01", template, 3)
+    assert time.perf_counter() - start < 0.5
+    assert result["ok"] is False and result["kind"] == "parse"
+    assert api.pumping_proof("pump-01", template)["available"] is False
