@@ -719,18 +719,25 @@ def show_case_report(sid: str, template: str) -> None:
             return
         lo, hi = min(report["checked_m"]), max(report["checked_m"])
         st.markdown(f"$w$ = {mono(template)} 로 리시브하면, $|vxy| \\le m$, $|vy| \\ge 1$인 모든 분할이 "
-                    f"아래 {len(report['rows'])}가지 경우 중 하나에 속해요.")
+                    f"아래 {len(report['rows'])}가지 경우 중 하나에 속해요. **이 경우 목록은 모든 m에서 같아요** "
+                    "(블록이 모두 m글자 이상이라 vxy는 이웃한 두 블록까지만 걸쳐요).")
         rows = [{"경우": f"{n + 1}. {r['label']}",
                  "통하는 i": ", ".join(map(str, r["smash"])),
                  f"예 (m = {r['example_m']}, u|v|x|y|z)": "|".join(r["example"][p] or LAMBDA
                                                                for p in ("u", "v", "x", "y", "z"))}
                 for n, r in enumerate(report["rows"])]
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch", height=table_height(len(rows)))
-        st.markdown("모든 경우에서 L 밖으로 보내는 $i$가 있으므로 펌핑 보조정리의 조건이 깨지고, "
-                    "L은 문맥자유 언어가 아니에요. 표의 각 줄을 '경우 k: v와 y가 …이면 $i = …$로 펌핑했을 때 "
-                    "…라는 조건을 만족하지 않는다'로 옮겨 적으면 교재 형식의 증명이 돼요.")
-        st.caption(f"보조 검증: m = {lo}~{hi}의 모든 분할에서 확인했어요. 유한한 m에 대한 확인이므로, "
-                   "각 경우가 모든 m에서 성립하는지는 직접 따져서 확인해보세요.")
+        # 경우 목록은 모든 m에서 성립하지만(엔진이 식으로 확인), w ∈ L과 각 경우의 i는 m = lo~hi에서만 확인한 결과다.
+        # 그래서 확인 범위를 먼저 밝히고, 교재 형식의 증명으로 옮길 때 학생이 직접 보여야 할 두 가지를 적는다.
+        first = report["rows"][0]
+        st.markdown(
+            f"**m = {lo}~{hi}에서는** 모든 경우에 L 밖으로 보내는 $i$가 있었어요. "
+            "이 표를 교재 형식의 증명으로 옮기려면 두 가지를 모든 m에 대해 직접 보여야 해요.\n\n"
+            f"1. **$w \\in L$**: 모든 m에서 {mono(template)} 가 L에 속한다는 것\n"
+            f"2. **각 경우의 $i$로 펌핑한 문자열이 L 밖이다**: 예를 들어 1번 경우({first['label']})에서 "
+            f"$i = {first['smash'][0]}$로 펌핑한 문자열이 L의 조건을 만족하지 않는다는 것\n\n"
+            "이 둘을 보이면 펌핑 보조정리에 모순이므로 L은 문맥자유 언어가 아니라는 증명이 돼요."
+        )
 
 
 def show_game_end(game: dict, sid: str) -> None:

@@ -430,3 +430,28 @@ def test_cfl_analysis_accepts_serves_outside_m_values(m):
     received = api.cfl_computer_receive("cfl-04", m, seed=0)
     assert received["ok"]
     assert api.cfl_analysis("cfl-04", received["word"], m)["ok"]
+
+
+# ---------- PR #4 리뷰 반영 ----------
+
+
+def test_pumping_receive_uses_cfl_m_limit_for_cfl_stages():
+    """공용 리시브도 문맥자유 스테이지에는 수비와 같은 m 상한을 쓴다 (리시브만 통과하고 수비에서 거부되지 않도록)."""
+    bad = api.pumping_receive("cfl-01", "a^m b^m c^m", 9)
+    assert bad["ok"] is False and bad["kind"] == "bad_m"
+    assert api.cfl_defend("cfl-01", "aaabbbccc", 9, seed=1)["ok"] is False
+    assert api.pumping_receive("cfl-01", "a^m b^m c^m", 8)["ok"] is True
+    # 정규 스테이지는 그대로 20까지
+    assert api.pumping_receive("pump-01", "a^m b^m", 9)["ok"] is True
+
+
+def test_cfl_case_report_is_cached_but_returns_fresh_dicts():
+    api._cfl_case_report.cache_clear()
+    first = api.cfl_case_report("cfl-01", "a^m b^m c^m")
+    second = api.cfl_case_report("cfl-01", "a^m b^m c^m")
+    assert first == second and first["available"]
+    assert first is not second and first["rows"] is not second["rows"]
+    first["rows"].clear()  # 한 세션이 결과를 바꿔도 다음 호출에는 영향이 없다
+    assert api.cfl_case_report("cfl-01", "a^m b^m c^m")["rows"]
+    assert api._cfl_case_report.cache_info().hits >= 2
+

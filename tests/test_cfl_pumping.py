@@ -250,3 +250,21 @@ def test_split_count_matches_enumeration():
     for n in range(0, 16):
         for m in range(1, 9):
             assert cfl_split_count(n, m) == len(list(cfl_split_ranges("a" * n, m)))
+
+
+def test_case_report_requires_checked_m_at_least_3():
+    """m = 1, 2에서는 v가 블록 경계에 걸치고 y가 다음 블록에 있는 경우(|vxy| ≥ 3)가 나타나지 않아서 표가 불완전하다."""
+    from catching_lemma.engine.cfl_pumping import MIN_CASE_REPORT_M, cfl_case_report
+    from catching_lemma.engine.pumping import BlockLanguage
+
+    lang = BlockLanguage(["a", "b", "c"], "n0 == n1 == n2")
+    assert MIN_CASE_REPORT_M == 3
+    for checked in ([1, 2], [2, 3, 4], []):
+        report = cfl_case_report(lang, "a^m b^m c^m", checked)
+        assert not report.available and report.reason, checked
+    # m = 3 하나만으로도 m = 3~7과 같은 경우 목록이 나온다
+    only3 = cfl_case_report(lang, "a^m b^m c^m", [3])
+    full = cfl_case_report(lang, "a^m b^m c^m", [3, 4, 5, 6, 7])
+    assert only3.available and full.available
+    assert [r.label for r in only3.rows] == [r.label for r in full.rows]
+

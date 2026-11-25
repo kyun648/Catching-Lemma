@@ -241,7 +241,9 @@ def pumping_receive(stage_id: str, template: str, m: int) -> dict:
     (문맥자유 분할도 |vy| ≤ m이라 펌핑한 문자열의 길이가 같은 범위 안에 있다).
     """
     stage = _find_pumping_stage(stage_id)
-    if error := _m_error(m):
+    # 문맥자유 스테이지는 수비(cfl_defend)와 같은 m 상한을 쓴다. 리시브만 통과하고 수비에서 거부되는 m이 없게 하기 위해서다.
+    error = _cfl_m_error(m, stage) if stage.chapter == "cfl_pumping" else _m_error(m)
+    if error:
         return {"ok": False, "word": None, "error": error, "kind": "bad_m"}
     if not isinstance(template, str):
         return {"ok": False, "word": None, "error": "w는 문자열로 적어주세요.", "kind": "parse"}
@@ -569,16 +571,31 @@ def cfl_analysis(stage_id: str, word: str, m: int) -> dict:
     }
 
 
+CFL_CASE_REPORT_CACHE_SIZE = 16
+
+
+@lru_cache(maxsize=CFL_CASE_REPORT_CACHE_SIZE)
+def _cfl_case_report(stage_id: str, template: str):
+    """(스테이지, 템플릿)마다 경우별 정리 표를 한 번만 만든다.
+
+    Streamlit은 경기가 끝난 화면을 버튼이나 펼침 영역을 누를 때마다 다시 그리는데, 결과는 스테이지와 템플릿이 같으면
+    항상 같다. 템플릿은 100글자 이하(MAX_TEMPLATE_LENGTH)라 키가 작다. 캐시한 엔진 결과는 밖으로 내보내지 않고,
+    cfl_case_report가 매번 새 dict로 바꿔서 돌려준다 (세션끼리 같은 객체를 나눠 쓰지 않도록).
+    """
+    stage = _find_pumping_stage(stage_id, "cfl_pumping")
+    return cfl_case_report_engine(stage.language, template, stage.m_values)
+
+
 def cfl_case_report(stage_id: str, template: str) -> dict:
     """깨는 쪽이 이겼을 때 경기 기록(w 템플릿)을 경우별 정리 표로 만든다. 스테이지의 모든 m으로 확인한다.
 
     {"available": bool, "reason": str | None, "checked_m": [int] | None,
      "rows": [{"label": str, "smash": [i, ...], "example": {"u", "v", "x", "y", "z"}, "example_m": int}]}
     """
-    stage = _find_pumping_stage(stage_id, "cfl_pumping")
+    _find_pumping_stage(stage_id, "cfl_pumping")
     if not isinstance(template, str):
         return {"available": False, "reason": "w는 문자열로 적어주세요.", "checked_m": None, "rows": []}
-    report = cfl_case_report_engine(stage.language, template, stage.m_values)
+    report = _cfl_case_report(stage_id, template)
     return {
         "available": report.available,
         "reason": report.reason,

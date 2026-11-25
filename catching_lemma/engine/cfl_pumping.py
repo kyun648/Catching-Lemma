@@ -293,18 +293,30 @@ class CaseReport:
     checked_m: list[int] | None = None
 
 
+MIN_CASE_REPORT_M = 3  # 경우별 정리 표를 만들 때 확인하는 m의 최솟값 (cfl_case_report docstring 참고)
+
+
 def cfl_case_report(language: BlockLanguage, template: str, checked_m: list[int]) -> CaseReport:
     """깨는 쪽 리시브(w 템플릿)로 경우별 정리 표를 만든다. 증명문의 뼈대가 된다.
 
     - 모든 블록의 지수가 모든 m ≥ 1에서 m 이상이어야 한다 (식으로 확인, at_least_m_for_all_m).
       그러면 |vxy| ≤ m인 vxy는 언제나 이웃한 두 블록까지만 걸쳐서, 확인한 m의 경우 목록이 모든 m의 경우 목록과 같다.
       a^7 b^7 c^7처럼 지수가 고정된 w는 m이 커지면 경우 목록이 바뀌고 결국 |w| < m이 되므로 정리 표를 만들지 않는다.
+    - 확인하는 m이 모두 MIN_CASE_REPORT_M(3) 이상이어야 한다. 이웃한 두 블록에 걸치는 경우 중 가장 긴 것
+      (예: v가 a와 b에 걸치고 y는 b에 있음, v = ab, y = b)도 |vxy| = 3이면 나타나므로, m ≥ 3이면 위의
+      "확인한 m의 경우 목록 = 모든 m의 경우 목록"이 성립한다. m = 1, 2에서는 이런 경우가 빠져서 표가 불완전해진다.
     - 확인한 모든 m에서 w ∈ L이고, w의 글자 블록 구조(몇 번째 블록이 무슨 글자인지)가 같아야 한다.
     - 경우마다, 확인한 모든 m에서 그 경우의 모든 분할을 뚫는 i가 하나 이상 있어야 한다.
     마지막 두 조건은 유한한 m에 대한 확인이므로 화면에 확인 범위를 함께 보여준다.
     """
     from .pumping import ExpressionError, TemplateError, at_least_m_for_all_m, expand_template, parse_template
 
+    if not checked_m or min(checked_m) < MIN_CASE_REPORT_M:
+        return CaseReport(
+            False, [],
+            reason=f"경우별 정리 표는 확인하는 m이 모두 {MIN_CASE_REPORT_M} 이상일 때만 만들어요. "
+            "m이 그보다 작으면 v와 y가 블록 경계에 걸치는 경우 일부가 나타나지 않아서 경우 목록이 빠져요.",
+        )
     try:
         blocks = parse_template(template, language.alphabet)
         long_enough = all(at_least_m_for_all_m(expr) for _, expr in blocks)
