@@ -1,0 +1,38 @@
+{
+  "id": "cfl-03",
+  "chapter": "cfl_pumping",
+  "title": "a^(n²)",
+  "description": "a의 개수가 제곱수(0, 1, 4, 9, 16, …)인 문자열의 언어예요.",
+  "hint": "글자가 한 종류뿐이라 어떻게 나누든 펌핑하면 길이만 |vy|씩 변해요. 제곱수 사이의 간격과 |vy| ≤ m을 비교해보세요.",
+  "hint_defend": "펌핑하면 길이가 일정한 간격으로 변해요. 그 간격으로 제곱수만 계속 밟을 수 있을지 생각해보세요.",
+  "context_free": false,
+  "language": {
+    "notation": "L = \\{\\, a^{n^2} \\mid n \\ge 0 \\,\\}",
+    "blocks": [
+      "a"
+    ],
+    "constraint": "is_square(n0)",
+    "condition_text": "a의 개수가 제곱수이다"
+  },
+  "m_values": [
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "examples": {
+    "accept": [
+      "",
+      "a",
+      "aaaa",
+      "aaaaaaaaa"
+    ],
+    "reject": [
+      "aa",
+      "aaa",
+      "aaaaa"
+    ]
+  },
+  "sample_receive": "a^(m*m)"
+}

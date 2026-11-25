@@ -17,7 +17,7 @@ CHAPTERS = {
     "1. DFA": "dfa",
     "2. NFA": "nfa",
     "3. 정규 펌핑 게임": "pumping",
-    "4. 문맥자유 펌핑 게임 (준비 중)": None,
+    "4. 문맥자유 펌핑 게임": "cfl_pumping",
 }
 
 
@@ -225,10 +225,17 @@ def stage_chapter(chapter: str) -> None:
 
 
 # ---------- 펌핑 게임 (탁구 4구 랠리) ----------
+#
+# 정규 펌핑 게임(kind = "pumping", w = xyz)과 문맥자유 펌핑 게임(kind = "cfl_pumping", w = uvxyz)이
+# 같은 화면을 쓴다. 분할 모양과 부르는 api만 다르다.
 
 WIN_POINTS = 3  # 먼저 3포인트를 따면 이긴다
 
 ROLES = {"깨는 쪽 (Lemma에 반박)": "break", "막는 쪽 (Lemma 편)": "defend"}
+
+CLAIM = {"pumping": "정규 언어", "cfl_pumping": "문맥자유 언어"}
+PARTS = {"pumping": ("x", "y", "z"), "cfl_pumping": ("u", "v", "x", "y", "z")}
+PUMPED_PARTS = {"pumping": ("y",), "cfl_pumping": ("v", "y")}
 
 RULES = """
 펌핑 보조정리를 **탁구 4구 랠리**로 진행해요. Lemma는 "L은 정규 언어"라고 주장해요.
@@ -249,9 +256,28 @@ RULES = """
 - 이 언어가 정규 언어인지는 경기가 끝나면 알려줘요.
 """
 
+CFL_RULES = """
+문맥자유 언어의 펌핑 보조정리도 **탁구 4구 랠리**로 진행해요. Lemma는 "L은 문맥자유 언어"라고 주장해요.
+정규 펌핑 게임과 달리 수비(분할)가 **다섯 조각** $w = uvxyz$이고, $v$와 $y$ **두 곳**을 함께 펌핑해요.
 
-def new_game(role: str) -> dict:
+| 순서 | 하는 일 | 증명 문장 | 깨는 쪽일 때 | 막는 쪽일 때 |
+|---|---|---|---|---|
+| 1구 서브 | 펌핑 길이 $m$을 정해요 | 모든 $m$에 대해 | Lemma | 나 |
+| 2구 리시브 | $w \\in L$, $|w| \\ge m$인 $w$를 골라요 | 어떤 $w$가 존재해서 | 나 | 컴퓨터 |
+| 3구 수비 | $|vxy| \\le m$, $|vy| \\ge 1$인 분할 $w = uvxyz$를 골라요 | 모든 분할에 대해 | Lemma | 나 |
+| 4구 스매시 | $uv^ixy^iz \\notin L$이 되는 $i$를 골라요 | 어떤 $i$가 존재해서 | 나 | 컴퓨터 |
+
+- 정규 게임과 가장 큰 차이: $vxy$는 $w$의 **앞쪽이 아니라 어디에나** 올 수 있어요. 대신 $v$와 $y$를 같은 횟수만큼 함께 펌핑해요.
+- 점수, 실수 비율, $i = 0, 2, 3, 4, 5$ 규칙은 정규 펌핑 게임과 같아요.
+- 포인트가 끝나면 수비 코스를 **경우**(v와 y가 각각 어느 글자 블록에 있는가)별로 묶은 표를 보여줘요. 교재의 경우 나누기 증명과 같은 방식이에요.
+- 깨는 쪽의 $w$는 블록 형태로 적어요: `a^m b^m c^m`, `a^(m*m)`. 지수에는 $m$과 정수, `+ - *`를 쓸 수 있어요.
+- 이 언어가 문맥자유 언어인지는 경기가 끝나면 알려줘요.
+"""
+
+
+def new_game(role: str, kind: str) -> dict:
     return {
+        "kind": kind,
         "role": role,
         "score": [0, 0],  # [나, 상대]
         "point": 0,
@@ -259,8 +285,8 @@ def new_game(role: str) -> dict:
         "m": None,
         "template": "",
         "word": None,
-        "split": None,  # {"start", "end", "x", "y", "z"}
-        "smash": None,  # {"i", "pumped", "landed"}: landed는 스매시가 들어갔는지 (xyⁱz ∉ L)
+        "split": None,  # 정규: {"start", "end", "x", "y", "z"}, 문맥자유: {"cuts", "u", "v", "x", "y", "z"}
+        "smash": None,  # {"i", "pumped", "landed"}: landed는 스매시가 들어갔는지 (펌핑한 문자열 ∉ L)
         "computer_mode": None,  # 컴퓨터의 이번 수: "tough"/"random" (수비) 또는 "best"/"mistake" (리시브)
         "analysis": None,
         "best": None,
@@ -274,6 +300,14 @@ def mono(text: str) -> str:
 
 def opponent_name(role: str) -> str:
     return "Lemma" if role == "break" else "컴퓨터"
+
+
+def pumped_name(kind: str, i) -> str:
+    return f"xy^{{{i}}}z" if kind == "pumping" else f"uv^{{{i}}}xy^{{{i}}}z"
+
+
+def split_key(split: dict, kind: str) -> tuple:
+    return (split["start"], split["end"]) if kind == "pumping" else tuple(split["cuts"])
 
 
 def scoreboard_html(game: dict, stage_title: str) -> str:
@@ -333,7 +367,8 @@ def table_svg(game: dict) -> str:
         else:
             caption = "컴퓨터의 스매시가 뚫었어요 — 실점" if landed else "수비 성공 — 득점"
 
-    left, right = ("Lemma (정규 언어라고 주장)", "나 (반박)") if role == "break" else ("나 (Lemma 편)", "컴퓨터 (반박)")
+    claim = CLAIM[game["kind"]]
+    left, right = (f"Lemma ({claim}라고 주장)", "나 (반박)") if role == "break" else ("나 (Lemma 편)", "컴퓨터 (반박)")
     label = 'font-family="sans-serif" font-size="13" fill="#888780"'
     return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 30 680 182" width="680" height="182">
   <rect x="40" y="65" width="600" height="110" rx="4" fill="#E1F5EE" stroke="#0F6E56"/>
@@ -346,8 +381,8 @@ def table_svg(game: dict) -> str:
 </svg>"""
 
 
-def split_html(split: dict) -> str:
-    """x | y | z를 색으로 나눠 보여준다. y는 펌핑되는 구간."""
+def split_html(split: dict, kind: str = "pumping") -> str:
+    """분할 조각을 색으로 나눠 보여준다. 펌핑되는 조각(정규: y, 문맥자유: v와 y)은 강조한다."""
     def box(text: str, label: str, accent: bool) -> str:
         bg = "#FAECE7" if accent else "rgba(128,128,128,0.12)"
         fg = "#993C1D" if accent else "inherit"
@@ -357,13 +392,17 @@ def split_html(split: dict) -> str:
                 f'font-family:monospace; font-size:18px; letter-spacing:2px;">{shown}</span>'
                 f'<span style="font-size:12px; opacity:0.7;">{label}</span></span>')
 
-    return ('<div style="margin:6px 0 2px;">'
-            + box(split["x"], "x", False) + box(split["y"], "y (펌핑 구간)", True) + box(split["z"], "z", False)
-            + "</div>")
+    pumped = PUMPED_PARTS[kind]
+    boxes = [box(split[p], f"{p} (펌핑 구간)" if p in pumped else p, p in pumped) for p in PARTS[kind]]
+    return '<div style="margin:6px 0 2px;">' + "".join(boxes) + "</div>"
+
+
+def split_text(split: dict, kind: str) -> str:
+    return " · ".join(f"{p}={mono(split[p])}" for p in PARTS[kind])
 
 
 def shot_cards(game: dict) -> None:
-    role, phase = game["role"], game["phase"]
+    role, phase, kind = game["role"], game["phase"], game["kind"]
     sp, sm = game["split"], game["smash"]
     owners = ["Lemma", "나", "Lemma", "나"] if role == "break" else ["나", "컴퓨터", "나", "컴퓨터"]
     serve = f"$m = {game['m']}$" if game["m"] is not None else "?"
@@ -373,7 +412,7 @@ def shot_cards(game: dict) -> None:
         receive = f"{mono(game['template'])} → {mono(game['word'])}"
     else:
         receive = mono(game["word"])
-    defense = f"x={mono(sp['x'])} · y={mono(sp['y'])} · z={mono(sp['z'])}" if sp and phase != "guard" else "?"
+    defense = split_text(sp, kind) if sp and phase != "guard" else "?"
     if sm is None:
         smash = "?"
     elif sm["i"] is None:
@@ -381,7 +420,7 @@ def shot_cards(game: dict) -> None:
     else:
         smash = f"$i = {sm['i']}$ → {mono(sm['pumped'])}"
     cards = [("1구 서브", serve, "∀m"), ("2구 리시브", receive, "∃w"),
-             ("3구 수비", defense, "∀xyz"), ("4구 스매시", smash, "∃i")]
+             ("3구 수비", defense, "∀xyz" if kind == "pumping" else "∀uvxyz"), ("4구 스매시", smash, "∃i")]
     for col, owner, (label, body, quantifier) in zip(st.columns(4), owners, cards):
         with col.container(border=True):
             st.caption(f"{label} · {owner} · {quantifier}")
@@ -390,15 +429,23 @@ def shot_cards(game: dict) -> None:
 
 def finish_point(game: dict, sid: str, landed: bool, i: int | None, pumped: str | None) -> None:
     """스매시 결과로 점수와 기록을 갱신하고 다음 단계로 넘긴다."""
+    kind = game["kind"]
     me_scored = landed if game["role"] == "break" else not landed
     game["score"][0 if me_scored else 1] += 1
     game["smash"] = {"i": i, "pumped": pumped, "landed": landed}
-    game["analysis"] = api.pumping_analysis(sid, game["word"], game["m"])
-    game["best"] = api.pumping_best_receive(sid, game["m"]) if game["role"] == "defend" else None
+    if kind == "pumping":
+        game["analysis"] = api.pumping_analysis(sid, game["word"], game["m"])
+        best = api.pumping_best_receive
+    else:
+        game["analysis"] = api.cfl_analysis(sid, game["word"], game["m"])
+        best = api.cfl_best_receive
+    game["best"] = best(sid, game["m"]) if game["role"] == "defend" else None
     sp = game["split"]
-    game["log"].append({"포인트": game["point"] + 1, "m": game["m"], "w": game["word"], "x": sp["x"], "y": sp["y"],
-                        "z": sp["z"], "i": "-" if i is None else str(i), "xyⁱz": pumped or "-",
-                        "득점": "나" if me_scored else opponent_name(game["role"])})
+    row = {"포인트": game["point"] + 1, "m": game["m"], "w": game["word"]}
+    row.update({p: sp[p] for p in PARTS[kind]})
+    row.update({"i": "-" if i is None else str(i), "펌핑 결과": pumped or "-",
+                "득점": "나" if me_scored else opponent_name(game["role"])})
+    game["log"].append(row)
     game["phase"] = "done" if max(game["score"]) >= WIN_POINTS else "result"
 
 
@@ -412,22 +459,28 @@ def next_point(game: dict, stage: dict) -> None:
 
 
 def play_break(game: dict, stage: dict, key: str) -> None:
-    sid, m = stage["id"], game["m"]
+    sid, m, kind = stage["id"], game["m"], game["kind"]
     if game["phase"] == "receive":
         with st.form(f"{key}-receive"):
-            template = st.text_input("2구 리시브: w를 고르세요", value=game["template"], placeholder="예: a^m b^m")
+            example = "a^m b^m" if kind == "pumping" else "a^m b^m c^m"
+            template = st.text_input("2구 리시브: w를 고르세요", value=game["template"], placeholder=f"예: {example}")
             submitted = st.form_submit_button("리시브", type="primary")
         if submitted:
             received = api.pumping_receive(sid, template, m)
             if not received["ok"]:
                 st.error(f"폴트 — {received['error']}")
             else:
-                defense = api.pumping_defend(sid, received["word"], m, seed=random.randrange(2**31),
-                                             point=game["point"])
+                seed = random.randrange(2**31)
+                if kind == "pumping":
+                    defense = api.pumping_defend(sid, received["word"], m, seed=seed, point=game["point"])
+                    fields = ("start", "end", "x", "y", "z")
+                else:
+                    defense = api.cfl_defend(sid, received["word"], m, seed=seed, point=game["point"])
+                    fields = ("cuts", "u", "v", "x", "y", "z")
                 if not defense["ok"]:
                     st.error(defense["error"])
                 else:
-                    split = {k: defense[k] for k in ("start", "end", "x", "y", "z")}
+                    split = {k: defense[k] for k in fields}
                     game.update(template=template, word=received["word"], computer_mode=defense["mode"],
                                 split=split, phase="smash")
                     st.rerun()
@@ -435,13 +488,19 @@ def play_break(game: dict, stage: dict, key: str) -> None:
     elif game["phase"] == "smash":
         sp = game["split"]
         st.markdown("**3구 수비** — Lemma가 이렇게 나눴어요.")
-        st.html(split_html(sp))
-        st.caption(f"|xy| = {len(sp['x'] + sp['y'])} ≤ m = {m},  |y| = {len(sp['y'])} ≥ 1")
+        st.html(split_html(sp, kind))
+        if kind == "pumping":
+            st.caption(f"|xy| = {len(sp['x'] + sp['y'])} ≤ m = {m},  |y| = {len(sp['y'])} ≥ 1")
+        else:
+            st.caption(f"|vxy| = {len(sp['v'] + sp['x'] + sp['y'])} ≤ m = {m},  |vy| = {len(sp['v'] + sp['y'])} ≥ 1")
         with st.form(f"{key}-smash"):
             i = st.radio("4구 스매시: i를 고르세요 (i = 1은 w 그대로라 뺐어요)", api.SMASH_VALUES, horizontal=True)
             submitted = st.form_submit_button("스매시", type="primary")
         if submitted:
-            result = api.pumping_smash(sid, game["word"], m, sp["start"], sp["end"], i)
+            if kind == "pumping":
+                result = api.pumping_smash(sid, game["word"], m, sp["start"], sp["end"], i)
+            else:
+                result = api.cfl_smash(sid, game["word"], m, sp["cuts"], i)
             if not result["ok"]:
                 st.error(result["error"])
             else:
@@ -449,15 +508,54 @@ def play_break(game: dict, stage: dict, key: str) -> None:
                 st.rerun()
 
 
+def guard_regular(word: str, m: int, key: str) -> dict:
+    limit = min(m, len(word))
+    start, end = st.slider(
+        "3구 수비: y 구간을 고르세요 (두 손잡이 사이가 y, 0은 w의 맨 앞)",
+        min_value=0, max_value=limit, value=(0, 1), step=1, key=key,
+    )
+    preview = {"start": start, "end": end, "x": word[:start], "y": word[start:end], "z": word[end:]}
+    st.html(split_html(preview))
+    st.caption(f"|xy| = {end} ≤ m = {m},  |y| = {end - start} ≥ 1")
+    return preview
+
+
+def guard_cfl(word: str, m: int, key: str) -> dict | None:
+    """문맥자유 수비 입력: 슬라이더 ①로 vxy 구간, 슬라이더 ②로 그 안의 x 구간을 고른다.
+    vxy에서 x의 왼쪽이 v, 오른쪽이 y가 된다 (x가 vxy의 왼쪽 끝에 붙으면 v가 빈 문자열)."""
+    n = len(word)
+    p1, p4 = st.slider(
+        f"3구 수비 ①: vxy 구간을 고르세요 (길이 m = {m} 이하, 0은 w의 맨 앞)",
+        min_value=0, max_value=n, value=(0, min(m, n)), step=1, key=f"{key}-vxy",
+    )
+    if p4 - p1 < 1:
+        st.info("vxy 구간이 비어 있어요. 한 글자 이상 고르세요.")
+        return None
+    mid = p1 + (p4 - p1) // 2
+    p2, p3 = st.slider(
+        "3구 수비 ②: 그 안에서 x 구간을 고르세요 (x의 왼쪽 나머지가 v, 오른쪽 나머지가 y)",
+        min_value=p1, max_value=p4, value=(mid, mid), step=1, key=f"{key}-x-{p1}-{p4}",
+    )
+    preview = {"cuts": [p1, p2, p3, p4], "u": word[:p1], "v": word[p1:p2], "x": word[p2:p3],
+               "y": word[p3:p4], "z": word[p4:]}
+    st.html(split_html(preview, "cfl_pumping"))
+    vxy_ok = "≤" if p4 - p1 <= m else "> (너무 길어요)"
+    st.caption(f"|vxy| = {p4 - p1} {vxy_ok} m = {m},  |vy| = {(p2 - p1) + (p4 - p3)} ≥ 1")
+    return preview
+
+
 def play_defend(game: dict, stage: dict, key: str) -> None:
-    sid = stage["id"]
+    sid, kind = stage["id"], game["kind"]
+    max_serve = stage["max_serve"]
     if game["phase"] == "serve":
         with st.form(f"{key}-serve"):
-            m = st.number_input(f"1구 서브: 펌핑 길이 m을 고르세요 (1 ~ {api.MAX_SERVE})", min_value=1,
-                                max_value=api.MAX_SERVE, value=game["m"] or 3, step=1)
+            m = st.number_input(f"1구 서브: 펌핑 길이 m을 고르세요 (1 ~ {max_serve})", min_value=1,
+                                max_value=max_serve, value=min(game["m"] or 3, max_serve), step=1)
             submitted = st.form_submit_button("서브", type="primary")
         if submitted:
-            received = api.pumping_computer_receive(sid, int(m), point=game["point"], seed=random.randrange(2**31))
+            receive = api.pumping_computer_receive if kind == "pumping" else api.cfl_computer_receive
+            with st.spinner("컴퓨터가 리시브를 고르는 중이에요…"):
+                received = receive(sid, int(m), point=game["point"], seed=random.randrange(2**31))
             if not received["ok"]:
                 st.error(received["error"])
             else:
@@ -466,17 +564,15 @@ def play_defend(game: dict, stage: dict, key: str) -> None:
 
     elif game["phase"] == "guard":
         word, m = game["word"], game["m"]
-        st.markdown(f"**2구 리시브** — 컴퓨터가 $w$ = {mono(word)} 를 보냈어요. 이제 y를 골라 막으세요.")
-        limit = min(m, len(word))
-        start, end = st.slider(
-            "3구 수비: y 구간을 고르세요 (두 손잡이 사이가 y, 0은 w의 맨 앞)",
-            min_value=0, max_value=limit, value=(0, 1), step=1, key=f"{key}-guard-{game['point']}",
-        )
-        preview = {"start": start, "end": end, "x": word[:start], "y": word[start:end], "z": word[end:]}
-        st.html(split_html(preview))
-        st.caption(f"|xy| = {end} ≤ m = {m},  |y| = {end - start} ≥ 1")
-        if st.button("수비", type="primary", key=f"{key}-guard-btn"):
-            result = api.pumping_computer_smash(sid, word, m, start, end)
+        target = "y를" if kind == "pumping" else "v와 y를"
+        st.markdown(f"**2구 리시브** — 컴퓨터가 $w$ = {mono(word)} 를 보냈어요. 이제 {target} 골라 막으세요.")
+        slider_key = f"{key}-guard-{game['point']}"
+        preview = guard_regular(word, m, slider_key) if kind == "pumping" else guard_cfl(word, m, slider_key)
+        if st.button("수비", type="primary", key=f"{key}-guard-btn", disabled=preview is None):
+            if kind == "pumping":
+                result = api.pumping_computer_smash(sid, word, m, preview["start"], preview["end"])
+            else:
+                result = api.cfl_computer_smash(sid, word, m, preview["cuts"])
             if not result["ok"]:
                 st.error(result["error"])
             else:
@@ -485,14 +581,14 @@ def play_defend(game: dict, stage: dict, key: str) -> None:
                 st.rerun()
 
 
-def pumping_chapter() -> None:
-    stages = api.list_pumping_stages()
+def pumping_chapter(kind: str = "pumping") -> None:
+    stages = api.list_pumping_stages(kind)
     stage = st.sidebar.selectbox("스테이지", stages, format_func=lambda s: f"{s['id']} · {s['title']}")
     role = ROLES[st.sidebar.radio("역할", list(ROLES))]
     sid = stage["id"]
     key = f"{sid}-{role}-game"
     if key not in st.session_state:
-        game = new_game(role)
+        game = new_game(role, kind)
         if role == "break":
             game["m"] = stage["m_values"][0]
         st.session_state[key] = game
@@ -502,7 +598,7 @@ def pumping_chapter() -> None:
     st.markdown(f"$${stage['notation']}$$")
     st.write(stage["description"])
     with st.expander("규칙"):
-        st.markdown(RULES)
+        st.markdown(RULES if kind == "pumping" else CFL_RULES)
     hint = stage["hint"] if role == "break" else stage["hint_defend"]
     if hint:
         with st.expander("힌트"):
@@ -530,22 +626,23 @@ def pumping_chapter() -> None:
 
 
 def show_point_result(game: dict) -> None:
-    role, m = game["role"], game["m"]
+    role, m, kind = game["role"], game["m"], game["kind"]
     sp, sm, analysis = game["split"], game["smash"], game["analysis"]
     if not analysis["ok"]:
         st.error(f"수비 코스를 분석하지 못했어요. {analysis['error']}")
         return
-    this_split = next(s for s in analysis["splits"] if s["start"] == sp["start"] and s["end"] == sp["end"])
+    this_split = next(s for s in analysis["splits"] if split_key(s, kind) == split_key(sp, kind))
     blockable = analysis["total"] - analysis["beaten"]
+    target = "y" if kind == "pumping" else "v, y"
 
     if role == "break":
         if sm["landed"]:
-            st.success(f"스매시 성공 — $xy^{{{sm['i']}}}z$ = {mono(sm['pumped'])} 는 L에 속하지 않아요. 득점!")
+            st.success(f"스매시 성공 — ${pumped_name(kind, sm['i'])}$ = {mono(sm['pumped'])} 는 L에 속하지 않아요. 득점!")
             if blockable:
                 st.warning(f"행운의 득점이에요. Lemma가 최선이 아닌 코스로 수비했는데, 받아낼 수 있는 코스가 "
                            f"{blockable}개 있었어요. 아래 분석을 보고 리시브를 바꿔보세요.")
         else:
-            st.error(f"Lemma가 받아냈어요 — $xy^{{{sm['i']}}}z$ = {mono(sm['pumped'])} 는 여전히 L 안이에요.")
+            st.error(f"Lemma가 받아냈어요 — ${pumped_name(kind, sm['i'])}$ = {mono(sm['pumped'])} 는 여전히 L 안이에요.")
             if this_split["breaking"]:
                 st.caption(f"이 코스는 i = {', '.join(map(str, this_split['breaking']))}로 스매시했다면 뚫을 수 있었어요.")
             else:
@@ -553,13 +650,13 @@ def show_point_result(game: dict) -> None:
     else:
         best = game["best"]
         if not sm["landed"]:
-            st.success("수비 성공 — 컴퓨터가 i = 0, 2, 3, 4, 5 중 어떤 i로 쳐도 xyⁱz가 L 안이에요. 득점!")
+            st.success(f"수비 성공 — 컴퓨터가 i = 0, 2, 3, 4, 5 중 어떤 i로 쳐도 ${pumped_name(kind, 'i')}$가 L 안이에요. 득점!")
         else:
-            st.error(f"컴퓨터의 스매시 — $i = {sm['i']}$일 때 $xy^{{{sm['i']}}}z$ = {mono(sm['pumped'])} 는 L 밖이에요. 실점.")
+            st.error(f"컴퓨터의 스매시 — $i = {sm['i']}$일 때 ${pumped_name(kind, sm['i'])}$ = {mono(sm['pumped'])} 는 L 밖이에요. 실점.")
             if blockable:
-                st.caption(f"y를 다르게 잡았다면 막을 수 있었어요. 막히는 코스가 {blockable}개 있어요 (아래 분석).")
+                st.caption(f"{target}를 다르게 잡았다면 막을 수 있었어요. 막히는 코스가 {blockable}개 있어요 (아래 분석).")
             else:
-                st.caption("이 w는 어떤 y로도 막을 수 없는 리시브였어요.")
+                st.caption(f"이 w는 어떤 {target}로도 막을 수 없는 리시브였어요.")
         if game["computer_mode"] == "mistake":
             st.caption("이번에 컴퓨터는 최선이 아닌 w를 골랐어요.")
         if not best["ok"]:
@@ -570,31 +667,92 @@ def show_point_result(game: dict) -> None:
         else:
             st.caption(f"m = {m}에서는 컴퓨터가 어떤 w를 보내도 막을 코스가 있어요.")
 
+    if kind == "cfl_pumping":
+        show_case_table(analysis, this_split["case"], role)
+
     good = "막힘 (막는 쪽에 좋은 코스)" if role == "defend" else "없음 (막힘)"
+    expanded = bool(blockable) and role == "break" and kind == "pumping"
     with st.expander(f"수비 코스 분석 (m = {m}): {analysis['total']}개 중 뚫리는 코스 {analysis['beaten']}개",
-                     expanded=bool(blockable) and role == "break"):
-        rows = [{"x": s["x"] or LAMBDA, "y": s["y"], "z": s["z"] or LAMBDA,
+                     expanded=expanded):
+        rows = [{**{p: s[p] or LAMBDA for p in PARTS[kind]},
                  "통하는 i": ", ".join(map(str, s["breaking"])) or good} for s in analysis["splits"]]
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
         st.caption("통하는 i가 없는 코스가 하나라도 있으면, 그 w로는 막는 쪽이 막을 수 있어요.")
 
 
+def table_height(rows: int) -> int:
+    """경우별 표가 스크롤 없이 모두 보이는 높이 (행 높이 35px + 머리글)."""
+    return 35 * (rows + 1) + 3
+
+
+def show_case_table(analysis: dict, current: int, role: str) -> None:
+    """문맥자유 게임: 수비 코스를 경우(v, y가 어느 글자 블록에 있는가)별로 묶은 표. 이번 수비의 경우를 표시한다."""
+    cases = analysis["cases"]
+    open_cases = sum(1 for c in cases if c["blockable"])
+    with st.expander(f"경우별 정리: {len(cases)}가지 경우 중 막히는 분할이 있는 경우 {open_cases}가지", expanded=True):
+        rows = []
+        for n, c in enumerate(cases):
+            ex = c["example"]
+            rows.append({
+                "이번 수비": "◀" if n == current else "",
+                "경우": f"{n + 1}. {c['label']}",
+                "분할 수": c["total"],
+                "막히는 분할": c["blockable"],
+                "모든 분할에 통하는 i": ", ".join(map(str, c["common_i"])) or "-",
+                "예 (u|v|x|y|z)": "|".join(ex[p] or LAMBDA for p in ("u", "v", "x", "y", "z")),
+            })
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch", height=table_height(len(rows)))
+        if role == "break":
+            st.caption("'막히는 분할'이 0인 경우만 남으면 Lemma가 어디에 수비해도 뚫을 수 있는 리시브예요. "
+                       "'모든 분할에 통하는 i'가 '-'인 경우는 분할에 따라 다른 i가 필요해요.")
+        else:
+            st.caption("'막히는 분할'이 1 이상인 경우를 고르면 막을 수 있었어요. 예 칸은 그 경우의 대표 분할이에요 "
+                       "(막히는 분할이 있으면 그중 하나).")
+
+
+def show_case_report(sid: str, template: str) -> None:
+    report = api.cfl_case_report(sid, template)
+    with st.container(border=True):
+        st.markdown("**경기 기록지 → 경우별 정리**")
+        if not report["available"]:
+            st.info(f"이번 리시브로는 경우별 정리를 만들 수 없어요. {report['reason']}")
+            return
+        lo, hi = min(report["checked_m"]), max(report["checked_m"])
+        st.markdown(f"$w$ = {mono(template)} 로 리시브하면, $|vxy| \\le m$, $|vy| \\ge 1$인 모든 분할이 "
+                    f"아래 {len(report['rows'])}가지 경우 중 하나에 속해요.")
+        rows = [{"경우": f"{n + 1}. {r['label']}",
+                 "통하는 i": ", ".join(map(str, r["smash"])),
+                 f"예 (m = {r['example_m']}, u|v|x|y|z)": "|".join(r["example"][p] or LAMBDA
+                                                               for p in ("u", "v", "x", "y", "z"))}
+                for n, r in enumerate(report["rows"])]
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch", height=table_height(len(rows)))
+        st.markdown("모든 경우에서 L 밖으로 보내는 $i$가 있으므로 펌핑 보조정리의 조건이 깨지고, "
+                    "L은 문맥자유 언어가 아니에요. 표의 각 줄을 '경우 k: v와 y가 …이면 $i = …$로 펌핑했을 때 "
+                    "…라는 조건을 만족하지 않는다'로 옮겨 적으면 교재 형식의 증명이 돼요.")
+        st.caption(f"보조 검증: m = {lo}~{hi}의 모든 분할에서 확인했어요. 유한한 m에 대한 확인이므로, "
+                   "각 경우가 모든 m에서 성립하는지는 직접 따져서 확인해보세요.")
+
+
 def show_game_end(game: dict, sid: str) -> None:
-    role = game["role"]
+    role, kind = game["role"], game["kind"]
     me, opp = game["score"]
-    regular = api.pumping_reveal(sid)["regular"]
+    if kind == "pumping":
+        pumpable = api.pumping_reveal(sid)["regular"]
+    else:
+        pumpable = api.cfl_reveal(sid)["context_free"]
+    claim = CLAIM[kind]
     won = me >= WIN_POINTS
-    kind = "**정규 언어예요.**" if regular else "**정규 언어가 아니에요.**"
+    verdict = f"**{claim}예요.**" if pumpable else f"**{claim}가 아니에요.**"
 
     if role == "break":
         if won:
             st.success(f"스테이지 클리어 ({me} : {opp}) — Lemma의 주장을 반박했어요.")
         else:
             st.error(f"Lemma가 이겼어요 ({me} : {opp}).")
-        if regular:
-            st.info(f"이 언어는 {kind} m이 충분히 크면 Lemma는 언제나 막을 코스를 찾을 수 있어서, "
+        if pumpable:
+            st.info(f"이 언어는 {verdict} m이 충분히 크면 Lemma는 언제나 막을 코스를 찾을 수 있어서, "
                     "펌핑 보조정리로는 반박할 수 없어요. 막는 쪽으로도 해보세요.")
-        elif won:
+        elif won and kind == "pumping":
             proof = api.pumping_proof(sid, game["template"])
             with st.container(border=True):
                 st.markdown("**경기 기록지 → 증명문**")
@@ -602,20 +760,23 @@ def show_game_end(game: dict, sid: str) -> None:
                     st.markdown(proof["text"])
                 else:
                     st.info(f"이번 리시브로는 증명문을 자동으로 쓸 수 없어요. {proof['reason']}")
+        elif won:
+            show_case_report(sid, game["template"])
         else:
-            st.info(f"이 언어는 {kind} 어떤 수비도 뚫는 리시브가 있으니, 리시브(w)를 바꿔서 다시 도전해보세요.")
+            st.info(f"이 언어는 {verdict} 어떤 수비도 뚫는 리시브가 있으니, 리시브(w)를 바꿔서 다시 도전해보세요.")
     else:
         if won:
             st.success(f"Lemma를 지켰어요 ({me} : {opp}).")
         else:
             st.error(f"컴퓨터가 이겼어요 ({me} : {opp}).")
-        if regular:
-            st.info(f"이 언어는 {kind} m을 충분히 크게 잡고 y를 잘 고르면 언제나 막을 수 있어요. "
-                    "이게 펌핑 보조정리가 정규 언어에 대해 말하는 성질이에요. "
-                    "다만 반대로, 펌핑 보조정리를 만족한다고 해서 정규 언어라는 증명이 되지는 않아요.")
+        if pumpable:
+            st.info(f"이 언어는 {verdict} m을 충분히 크게 잡고 분할을 잘 고르면 언제나 막을 수 있어요. "
+                    f"이게 펌핑 보조정리가 {claim}에 대해 말하는 성질이에요. "
+                    f"다만 반대로, 펌핑 보조정리를 만족한다고 해서 {claim}라는 증명이 되지는 않아요.")
         else:
-            st.info(f"이 언어는 {kind} 컴퓨터가 최선으로 리시브하면 어떤 수비로도 막을 수 없어요. "
-                    "이게 펌핑 보조정리로 정규 언어가 아님을 보이는 원리예요. 깨는 쪽으로 이기면 증명문을 볼 수 있어요.")
+            st.info(f"이 언어는 {verdict} 컴퓨터가 최선으로 리시브하면 어떤 수비로도 막을 수 없어요. "
+                    f"이게 펌핑 보조정리로 {claim}가 아님을 보이는 원리예요. 깨는 쪽으로 이기면 "
+                    + ("증명문을" if kind == "pumping" else "경우별 정리 표를") + " 볼 수 있어요.")
         st.caption("컴퓨터는 i = 0, 2, 3, 4, 5만 시험해요. '막았다'는 판정은 이 범위 안에서의 확인이에요.")
     with st.expander("경기 기록"):
         st.dataframe(pd.DataFrame(game["log"]), hide_index=True, width="stretch")
@@ -629,8 +790,8 @@ def main() -> None:
 
     if chapter in ("dfa", "nfa"):
         stage_chapter(chapter)
-    elif chapter == "pumping":
-        pumping_chapter()
+    elif chapter in ("pumping", "cfl_pumping"):
+        pumping_chapter(chapter)
     else:
         st.info("아직 준비 중인 챕터예요.")
 

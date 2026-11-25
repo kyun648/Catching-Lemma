@@ -500,6 +500,24 @@ def _polynomial(expr: str) -> dict[int, int]:
         raise ExpressionError(f"식 '{expr}'를 해석할 수 없어요.") from e
 
 
+def at_least_m_for_all_m(expr: str) -> bool:
+    """지수식 p(m)이 모든 m ≥ 1에서 p(m) ≥ m인지 식으로 확인한다.
+
+    m = t + 1 (t ≥ 0)로 바꾼 q(t) = p(t + 1) − (t + 1)의 계수가 모두 0 이상이면 참이다.
+    충분조건이라 안전한 쪽으로 판단한다: 참이면 확실히 성립하고, 거짓이어도 드물게 성립하는 식이 있을 수 있다
+    (예: m² − 2m + 2는 정수 m에서는 성립하지만 t² − t라서 거짓으로 본다). m², 2m − 1, m + 3 등은 통과한다.
+    """
+    from math import comb
+
+    q: dict[int, int] = {}
+    for degree, coef in _polynomial(expr).items():
+        for k in range(degree + 1):  # (t + 1)^degree 전개
+            q[k] = q.get(k, 0) + coef * comb(degree, k)
+    q[1] = q.get(1, 0) - 1
+    q[0] = q.get(0, 0) - 1
+    return all(c >= 0 for c in q.values())
+
+
 def _affine(expr: str) -> tuple[int, int] | None:
     """지수식이 a·m + b 꼴이면 (a, b), 아니면(m² 등) None."""
     poly = _polynomial(expr)
