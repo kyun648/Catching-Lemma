@@ -470,3 +470,30 @@ def test_cfl_case_report_cache_does_not_leak_or_keep_padded_templates():
     assert too_long["available"] is False
     assert api._cfl_case_report.cache_info().currsize == 1  # 길이 상한을 넘으면 캐시하지 않는다
 
+
+def test_cfl_analysis_sends_played_split_and_capped_rows():
+    """분할이 2만 개가 넘어도 화면에는 이번 분할과 일부(막히는 분할부터)만 보낸다."""
+    import json
+
+    word = "a" * 84 + "b" * 84  # m = 8에서 가장 긴 리시브 길이(168)
+    assert api.cfl_defend("cfl-04", word, 8, seed=0)["ok"]
+    k = word.index("b")
+    analysis = api.cfl_analysis("cfl-04", word, 8, played=[k - 1, k, k, k + 1])
+    assert analysis["ok"] and roundtrips_as_json(analysis)
+    assert analysis["total"] == 25_410
+    assert len(analysis["splits"]) == api.CFL_ANALYSIS_ROWS
+    assert len(json.dumps(analysis, ensure_ascii=False)) < 300_000  # 전체를 보내면 약 7MB
+    played = analysis["played"]
+    assert played["cuts"] == [k - 1, k, k, k + 1] and played["breaking"] == []  # v = a, y = b는 막힌다
+    assert analysis["cases"][played["case"]]["label"] == "v: a만 · y: b만"
+    blocked = [s for s in analysis["splits"] if not s["breaking"]]
+    assert analysis["splits"][: len(blocked)] == blocked  # 막히는 분할이 앞에 온다
+
+
+def test_cfl_analysis_played_is_optional_and_validated():
+    whole = api.cfl_analysis("cfl-01", "aaabbbccc", 3)
+    assert whole["ok"] and whole["played"] is None
+    assert whole["total"] == len(whole["splits"])  # 작으면 전부 보낸다
+    for bad in ([0, 0, 2, 2], [0, 1, 1, 9], [0, 1, 1, True], "0112"):
+        result = api.cfl_analysis("cfl-01", "aaabbbccc", 3, played=bad)
+        assert result["ok"] is False and result["played"] is None and result["splits"] == []

@@ -538,35 +538,56 @@ def cfl_smash(stage_id: str, word: str, m: int, cuts, i: int) -> dict:
     return {"ok": True, "error": None, "pumped": pumped, "in_language": stage.language.contains(pumped)}
 
 
-def cfl_analysis(stage_id: str, word: str, m: int) -> dict:
-    """모든 수비 코스와, 그것을 경우별로 묶은 표.
+CFL_ANALYSIS_ROWS = 300  # cfl_analysis가 화면에 보내는 분할 수의 상한 (전체는 2만 개가 넘을 수 있다)
+
+
+def cfl_analysis(stage_id: str, word: str, m: int, played=None) -> dict:
+    """수비 코스 분석: 경우별 표, 이번에 플레이한 분할, 분할 목록 일부.
 
     {"ok": True, "error": None,
-     "splits": [{"cuts", "u", "v", "x", "y", "z", "breaking": [i, ...], "case": 경우 번호}],
+     "played": {"cuts", "u", "v", "x", "y", "z", "breaking": [i, ...], "case": 경우 번호} | None,
      "cases": [{"label": str, "total": int, "blockable": int, "common_i": [i, ...], "example": {"cuts", "u", ...}}],
-     "total": int, "beaten": int}
-    {"ok": False, "error": "이유", "splits": [], "cases": [], "total": 0, "beaten": 0}
+     "splits": [played와 같은 형식, 막히는 분할(breaking이 빈 목록)부터 최대 CFL_ANALYSIS_ROWS개],
+     "total": 전체 분할 수, "beaten": 뚫리는 분할 수}
+    {"ok": False, "error": "이유", "played": None, "cases": [], "splits": [], "total": 0, "beaten": 0}
+
+    played에 이번 포인트의 분할 경계 [p1, p2, p3, p4]를 주면 그 분할의 결과와 경우 번호를 따로 돌려준다.
+    전체 분할(m = 8, |w| = 168이면 약 25,000개, 약 7MB)을 보내면 세션 메모리와 브라우저 전송량이 커지고
+    학습 화면으로도 쓸모가 없어서 일부만 보낸다. 전체 개수는 total과 beaten으로 알려준다.
     blockable은 그 경우에서 어떤 i로도 뚫리지 않는(막는 쪽이 이기는) 분할 수, common_i는 그 경우의 모든 분할을 뚫는 i다.
     """
+    empty = {"played": None, "cases": [], "splits": [], "total": 0, "beaten": 0}
     stage = _find_pumping_stage(stage_id, "cfl_pumping")
-    if error := _cfl_m_error(m, stage) or _word_error(stage, word, m):
-        return {"ok": False, "error": error, "splits": [], "cases": [], "total": 0, "beaten": 0}
-    splits = list(_cfl_splits(stage_id, word, m))
-    cases = summarize_cases(word, splits)
+    error = _cfl_m_error(m, stage) or _word_error(stage, word, m)
+    if error is None and played is not None:
+        error = cfl_split_error(word, m, played)
+    if error:
+        return {"ok": False, "error": error, **empty}
+
+    splits = _cfl_splits(stage_id, word, m)
+    cases = summarize_cases(word, list(splits))
     runs = letter_runs(word)
     index = {c.key: n for n, c in enumerate(cases)}
+
+    def row(cuts, breaking) -> dict:
+        return {**_cuts_dict(word, cuts), "breaking": list(breaking), "case": index[case_key(runs, tuple(cuts))]}
+
+    played_row = None
+    if played is not None:
+        cuts = tuple(played)
+        breaking = [i for i in SMASH_VALUES if not stage.language.contains(cfl_pump(word, cuts, i))]
+        played_row = row(cuts, breaking)
+    blocked_first = sorted(splits, key=lambda s: bool(s.breaking))  # 막는 쪽에 좋은 코스를 먼저 (정렬은 안정적이라 그 안의 순서는 유지)
     return {
         "ok": True,
         "error": None,
-        "splits": [
-            {**_cuts_dict(word, s.cuts), "breaking": list(s.breaking), "case": index[case_key(runs, s.cuts)]}
-            for s in splits
-        ],
+        "played": played_row,
         "cases": [
             {"label": c.label, "total": c.total, "blockable": c.blockable, "common_i": list(c.common_i),
              "example": _cuts_dict(word, c.example)}
             for c in cases
         ],
+        "splits": [row(s.cuts, s.breaking) for s in blocked_first[:CFL_ANALYSIS_ROWS]],
         "total": len(splits),
         "beaten": sum(1 for s in splits if s.breaking),
     }

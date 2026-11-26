@@ -130,7 +130,7 @@ def trace_text(machine: dict, word: str) -> tuple[bool, str]:
 
 def too_large_message() -> str:
     return (
-        f"NFA가 너무 커서 DFA로 바꿀 수 없어요. 바꾼 DFA의 상태가 {api.MAX_DFA_STATES}개를 넘어요. "
+        f"NFA가 너무 커서 DFA로 바꿀 수 없어요. 바꾼 DFA의 상태가 {api.MAX_DFA_STATES:,}개를 넘어요. "
         "상태 수를 줄여보세요."
     )
 
@@ -437,7 +437,7 @@ def finish_point(game: dict, sid: str, landed: bool, i: int | None, pumped: str 
         game["analysis"] = api.pumping_analysis(sid, game["word"], game["m"])
         best = api.pumping_best_receive
     else:
-        game["analysis"] = api.cfl_analysis(sid, game["word"], game["m"])
+        game["analysis"] = api.cfl_analysis(sid, game["word"], game["m"], played=game["split"]["cuts"])
         best = api.cfl_best_receive
     game["best"] = best(sid, game["m"]) if game["role"] == "defend" else None
     sp = game["split"]
@@ -631,7 +631,10 @@ def show_point_result(game: dict) -> None:
     if not analysis["ok"]:
         st.error(f"수비 코스를 분석하지 못했어요. {analysis['error']}")
         return
-    this_split = next(s for s in analysis["splits"] if split_key(s, kind) == split_key(sp, kind))
+    if kind == "pumping":
+        this_split = next(s for s in analysis["splits"] if split_key(s, kind) == split_key(sp, kind))
+    else:  # 문맥자유: 분할이 수만 개라 api가 이번 분할을 따로 돌려준다
+        this_split = analysis["played"]
     blockable = analysis["total"] - analysis["beaten"]
     target = "y" if kind == "pumping" else "v, y"
 
@@ -640,7 +643,7 @@ def show_point_result(game: dict) -> None:
             st.success(f"스매시 성공 — ${pumped_name(kind, sm['i'])}$ = {mono(sm['pumped'])} 는 L에 속하지 않아요. 득점!")
             if blockable:
                 st.warning(f"행운의 득점이에요. Lemma가 최선이 아닌 코스로 수비했는데, 받아낼 수 있는 코스가 "
-                           f"{blockable}개 있었어요. 아래 분석을 보고 리시브를 바꿔보세요.")
+                           f"{blockable:,}개 있었어요. 아래 분석을 보고 리시브를 바꿔보세요.")
         else:
             st.error(f"Lemma가 받아냈어요 — ${pumped_name(kind, sm['i'])}$ = {mono(sm['pumped'])} 는 여전히 L 안이에요.")
             if this_split["breaking"]:
@@ -654,7 +657,7 @@ def show_point_result(game: dict) -> None:
         else:
             st.error(f"컴퓨터의 스매시 — $i = {sm['i']}$일 때 ${pumped_name(kind, sm['i'])}$ = {mono(sm['pumped'])} 는 L 밖이에요. 실점.")
             if blockable:
-                st.caption(f"{target}를 다르게 잡았다면 막을 수 있었어요. 막히는 코스가 {blockable}개 있어요 (아래 분석).")
+                st.caption(f"{target}를 다르게 잡았다면 막을 수 있었어요. 막히는 코스가 {blockable:,}개 있어요 (아래 분석).")
             else:
                 st.caption(f"이 w는 어떤 {target}로도 막을 수 없는 리시브였어요.")
         if game["computer_mode"] == "mistake":
@@ -672,11 +675,14 @@ def show_point_result(game: dict) -> None:
 
     good = "막힘 (막는 쪽에 좋은 코스)" if role == "defend" else "없음 (막힘)"
     expanded = bool(blockable) and role == "break" and kind == "pumping"
-    with st.expander(f"수비 코스 분석 (m = {m}): {analysis['total']}개 중 뚫리는 코스 {analysis['beaten']}개",
+    with st.expander(f"수비 코스 분석 (m = {m}): {analysis['total']:,}개 중 뚫리는 코스 {analysis['beaten']:,}개",
                      expanded=expanded):
         rows = [{**{p: s[p] or LAMBDA for p in PARTS[kind]},
                  "통하는 i": ", ".join(map(str, s["breaking"])) or good} for s in analysis["splits"]]
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+        if len(rows) < analysis["total"]:
+            st.caption(f"총 {analysis['total']:,}개 중 처음 {len(rows)}개만 보여줘요 (막히는 코스부터). "
+                       "전체는 위의 경우별 정리 표에서 경우마다 묶어서 볼 수 있어요.")
         st.caption("통하는 i가 없는 코스가 하나라도 있으면, 그 w로는 막는 쪽이 막을 수 있어요.")
 
 
