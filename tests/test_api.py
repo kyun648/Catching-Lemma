@@ -455,3 +455,18 @@ def test_cfl_case_report_is_cached_but_returns_fresh_dicts():
     assert api.cfl_case_report("cfl-01", "a^m b^m c^m")["rows"]
     assert api._cfl_case_report.cache_info().hits >= 2
 
+
+def test_cfl_case_report_cache_does_not_leak_or_keep_padded_templates():
+    """checked_m도 매번 새 목록이고, 앞뒤 공백을 붙인 템플릿은 공백을 뺀 키로 캐시한다."""
+    api._cfl_case_report.cache_clear()
+    first = api.cfl_case_report("cfl-01", "a^m b^m c^m")
+    first["checked_m"].append(99)
+    assert 99 not in api.cfl_case_report("cfl-01", "a^m b^m c^m")["checked_m"]
+
+    padded = api.cfl_case_report("cfl-01", "a^m b^m c^m" + " " * 100_000)
+    assert padded["available"]
+    assert api._cfl_case_report.cache_info().currsize == 1  # 공백을 붙여도 같은 키
+    too_long = api.cfl_case_report("cfl-01", "a^m b^m c^m" * 20)
+    assert too_long["available"] is False
+    assert api._cfl_case_report.cache_info().currsize == 1  # 길이 상한을 넘으면 캐시하지 않는다
+

@@ -16,6 +16,7 @@ from functools import lru_cache
 from .diagram import to_dot
 from .engine import LAMBDA, MAX_DFA_STATES, NFA, TooManyStatesError, automaton_from_dict
 from .engine.pumping import (
+    MAX_TEMPLATE_LENGTH,
     SMASH_VALUES,
     TemplateError,
     WordTooLongError,
@@ -595,11 +596,16 @@ def cfl_case_report(stage_id: str, template: str) -> dict:
     _find_pumping_stage(stage_id, "cfl_pumping")
     if not isinstance(template, str):
         return {"available": False, "reason": "w는 문자열로 적어주세요.", "checked_m": None, "rows": []}
+    # 캐시 키에는 앞뒤 공백을 뺀, 길이 상한 이하의 템플릿만 넣는다 (공백을 붙인 긴 입력이 캐시에 그대로 남지 않도록).
+    template = template.strip()
+    if len(template) > MAX_TEMPLATE_LENGTH:
+        return {"available": False, "reason": f"w는 {MAX_TEMPLATE_LENGTH}글자 이내로 적어주세요.",
+                "checked_m": None, "rows": []}
     report = _cfl_case_report(stage_id, template)
     return {
         "available": report.available,
         "reason": report.reason,
-        "checked_m": report.checked_m,
+        "checked_m": None if report.checked_m is None else list(report.checked_m),  # 캐시한 목록을 그대로 내보내지 않는다
         "rows": [
             {"label": r.label, "smash": list(r.smash), "example_m": r.example_m,
              "example": dict(zip(("u", "v", "x", "y", "z"), r.example))}
