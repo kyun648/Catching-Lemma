@@ -25,6 +25,13 @@ reviews:
         - 코멘트는 가능하면 5개 이내로 하고, 중요한 것부터 쓴다.
         - 동작이 같은 다른 작성 방식으로 바꾸자는 리팩터링 제안은 하지 않는다.
         - 외부 코드나 자료를 참고했거나 새 라이브러리를 추가했다면, README의 "참고자료"와 "사용한 라이브러리"(라이선스 포함) 표기가 있는지 확인한다.
+        - 이 프로젝트의 목표 실행 환경은 로컬 실행(각자 자기 PC에서 streamlit run)이다. 여러 사람이 한 서버에 동시 접속하는 배포는 아직 목표가 아니다.
+          자원 문제(메모리, 전송량, 계산 시간, 캐시 크기)는 아래 두 가지로 나눠서 쓴다.
+          1) 혼자 화면으로 쓸 때도 생기는 문제: 화면 조작으로 닿는 경로에서 혼자 써도 느껴지는 대기 시간이나 메모리·전송량. 평소대로 지적한다.
+          2) 여러 사용자가 동시에 쓸 때만 커지는 문제(세션마다 쌓이는 메모리, 프로세스 공용 캐시의 크기 등), 또는 화면에서는 닿지 않고
+             api를 직접 불러야만 생기는 자원 문제: 코멘트 제목 맨 앞에 "[배포 시 확인]"을 붙이고, 다른 지적보다 뒤에 둔다.
+             병합을 막는 문제로 다루지 않고, 위의 "코멘트 5개 이내" 개수에도 넣지 않는다.
+          판정·증명이 틀리는 문제, 잘못된 입력으로 예외가 나는 문제는 1), 2)와 상관없이 평소대로 지적한다 (api의 입력 확인 규칙은 그대로다).
     - path: "catching_lemma/engine/**"
       instructions: |
         - 오토마타 이론의 정의와 맞는지 가장 먼저 확인한다: DFA 판정, 최단 반례(곱 오토마톤 BFS), 최소화(분할 세분화), NFA 부분집합 구성, 펌핑 보조정리 분할 조건(정규: w = xyz, |xy| ≤ m, |y| ≥ 1 / 문맥자유: w = uvxyz, |vxy| ≤ m, |vy| ≥ 1).
@@ -42,8 +49,10 @@ reviews:
       instructions: |
         - 화면과 엔진 사이의 유일한 창구다. 모든 함수의 입력과 출력이 JSON으로 바꿀 수 있는 값(dict, list, str, int, bool, None)인지 확인한다. set, frozenset, dataclass, 엔진 객체를 그대로 돌려주면 지적한다.
         - 돌려주는 dict의 키나 형식을 바꾸면 docstring과 tests/test_api.py도 함께 바뀌었는지 확인한다.
-        - 화면에 보낼 필요가 없는 정보(정답 기계, 예시 문자열, 펌핑 언어의 조건식·정규 여부·sample_receive)를 내보내지 않는지 확인한다. 정규 여부는 경기가 끝난 뒤 pumping_reveal로만 알려준다.
-        - 펌핑 api 함수는 받은 값(m, w, 분할 위치, i)을 스스로 확인하고, 문제가 있으면 예외 대신 {"ok": False, "error": ...}를 돌려준다. 확인 없이 엔진을 부르는 경로가 있으면 지적한다. 스테이지 id가 없을 때만 KeyError를 낸다.
+        - 화면에 보낼 필요가 없는 정보(정답 기계, 예시 문자열, 펌핑 언어의 조건식·정규/문맥자유 여부·sample_receive)를 내보내지 않는지 확인한다. 정답은 경기가 끝난 뒤 pumping_reveal(정규), cfl_reveal(문맥자유)로만 알려준다.
+        - 정규 펌핑 함수(pumping_*)와 문맥자유 펌핑 함수(cfl_*)는 자기 장의 스테이지만 받는다 (_find_pumping_stage의 chapter 인자). 장이 섞이면 지적한다.
+        - 문맥자유 펌핑 함수(cfl_*)는 m을 1 ~ cfl_max_m(스테이지) = max(max_serve, m_values 최댓값)까지만 받는다. 분할 계산이 |w| × m³에 비례해서 정규 게임의 상한(20)을 그대로 쓰면 느려진다. m_values에 든 값만 받도록 좁히면 막는 쪽 서브(1 ~ max_serve) 뒤의 분석이 깨진다.
+        - 펌핑 api 함수는 받은 값(m, w, 분할 위치 또는 cuts, i)을 스스로 확인하고, 문제가 있으면 예외 대신 {"ok": False, "error": ...}를 돌려준다. 확인 없이 엔진을 부르는 경로가 있으면 지적한다. 스테이지 id가 없을 때만 KeyError를 낸다.
     - path: "catching_lemma/stage_data/**/*.json"
       instructions: |
         - reference(정답 기계)가 문제 설명(description)의 언어와 일치하는지, 설명의 예시 문자열이 실제로 맞게 판정되는지 확인한다.
@@ -54,7 +63,14 @@ reviews:
         - sample_receive는 정규가 아닌 언어에만 있어야 하고, 모든 m_values에서 어떤 분할이든 뚫는 w여야 한다.
         - description과 title이 정규 언어인지 아닌지를 미리 드러내지 않는지 확인한다 (역할을 고르기 전에 답을 알려주지 않기 위해서다).
         - m_values는 3포인트 선승을 위해 5개 이상이어야 한다.
-        - 블록이 3개 이상이고 조건이 느슨한 언어는 막는 쪽 게임의 리시브 계산이 크게 늘어난다. m = 8에서 후보 w가 MAX_RECEIVE_CANDIDATES(300)개를 넘지 않는지 tests/test_pumping_stages.py가 확인한다.
+        - 블록이 3개 이상이고 조건이 느슨한 언어는 막는 쪽 게임의 리시브 계산이 크게 늘어난다. m = max_serve(기본 8)에서 후보 w가 MAX_RECEIVE_CANDIDATES(300)개를 넘지 않는지 tests/test_pumping_stages.py가 확인한다.
+    - path: "catching_lemma/stage_data/cfl_pumping/*.json"
+      instructions: |
+        - 정규 펌핑 언어 JSON과 같은 기준으로 blocks, constraint, notation, description, condition_text가 같은 언어를 뜻하는지 확인한다.
+        - context_free 값이 실제로 맞는지 확인한다 (문맥자유 언어인데 false거나, 아닌데 true면 지적). tests/test_cfl_stages.py가 게임 결과로도 검사한다.
+        - sample_receive는 문맥자유가 아닌 언어에만 있어야 하고, 모든 m_values에서 어떤 uvxyz 분할이든 뚫는 w여야 한다.
+        - description과 title이 문맥자유 언어인지 아닌지를 미리 드러내지 않는지 확인한다.
+        - 막는 쪽 컴퓨터는 길이 m ~ 3m+3인 후보의 모든 분할을 살펴본다. max_serve에서 계산량(후보마다 분할 수를 더한 값)이 MAX_CFL_RECEIVE_WORK(40만)을 넘지 않는지 tests/test_cfl_stages.py가 확인한다. 후보 수만으로는 계산 시간을 막을 수 없다.
 
 chat:
   auto_reply: true

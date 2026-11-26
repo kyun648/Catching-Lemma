@@ -11,12 +11,11 @@ from catching_lemma.engine.pumping import (
     expand_template,
     parse_template,
 )
-from catching_lemma.stages import load_pumping_stages, load_stages
+from catching_lemma.stages import MAX_SERVE, load_pumping_stages, load_stages
 
 STAGES = load_pumping_stages()
 NON_REGULAR = [s for s in STAGES if not s.regular]
 REGULAR = [s for s in STAGES if s.regular]
-MAX_SERVE = 8  # api.MAX_SERVE와 같은 값
 
 
 def test_pumping_stages_exist():
@@ -26,7 +25,7 @@ def test_pumping_stages_exist():
 
 def test_pumping_stages_not_mixed_with_automaton_stages():
     assert all(s.chapter != "pumping" for s in load_stages())
-    ids = [s.id for s in STAGES] + [s.id for s in load_stages()]
+    ids = [s.id for s in load_pumping_stages(None)] + [s.id for s in load_stages()]
     assert len(ids) == len(set(ids))
 
 
@@ -74,8 +73,13 @@ def test_regular_flag_matches_game_behavior(stage):
         for m in stage.m_values:
             assert best_receives(stage.language, m)[0] == [], f"m = {m}에서 막을 수 없는 w가 있음"
     else:
-        for m in range(1, MAX_SERVE + 1):
+        for m in range(1, stage.max_serve + 1):
             assert best_receives(stage.language, m)[0], f"m = {m}에서 이기는 리시브가 없음"
+
+
+@pytest.mark.parametrize("stage", STAGES, ids=lambda s: s.id)
+def test_max_serve_in_range(stage):
+    assert 1 <= stage.max_serve <= MAX_SERVE
 
 
 @pytest.mark.parametrize("stage", STAGES, ids=lambda s: s.id)
@@ -100,10 +104,10 @@ def test_readme_example_stage_id_is_not_taken():
 
 @pytest.mark.parametrize("stage", STAGES, ids=lambda s: s.id)
 def test_defender_game_receive_stays_light(stage):
-    """막는 쪽 게임에서 컴퓨터는 m = MAX_SERVE일 때 후보 w를 모두 살펴본다.
+    """막는 쪽 게임에서 컴퓨터는 m = max_serve일 때 후보 w를 모두 살펴본다.
 
     블록이 많고 조건이 느슨한 언어는 후보가 급격히 늘어 리시브 한 번에 수 초~수 분이 걸린다.
-    이 검사에 걸리면 조건을 좁히거나 블록 수를 줄여주세요.
+    이 검사에 걸리면 조건을 좁히거나, 블록 수를 줄이거나, 스테이지의 max_serve를 낮춰주세요.
     """
-    count = len(candidate_words(stage.language, MAX_SERVE))
+    count = len(candidate_words(stage.language, stage.max_serve))
     assert count <= MAX_RECEIVE_CANDIDATES, f"후보 w가 {count}개예요 (상한 {MAX_RECEIVE_CANDIDATES})."

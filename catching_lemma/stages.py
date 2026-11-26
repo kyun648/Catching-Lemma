@@ -106,32 +106,53 @@ def grade(stage: Stage, candidate: DFA | NFA) -> GradeResult:
 
 # ---------- 펌핑 게임 스테이지 ----------
 
-PUMPING_CHAPTERS = {"pumping"}
+# 펌핑 게임 장과, 그 장의 JSON에서 "막는 쪽이 이길 수 있는 언어인지"를 적는 키
+PUMPING_CHAPTERS = {
+    "pumping": "regular",  # 정규 펌핑 게임 (w = xyz)
+    "cfl_pumping": "context_free",  # 문맥자유 펌핑 게임 (w = uvxyz)
+}
+MAX_SERVE = 8  # 막는 쪽에서 서브할 수 있는 m의 최대값. 스테이지 JSON의 max_serve로 더 낮출 수 있다.
 
 
 @dataclass
 class PumpingStage:
     id: str
-    chapter: str  # "pumping"
+    chapter: str  # "pumping" 또는 "cfl_pumping"
     title: str
     description: str
     notation: str  # 언어 표기 (LaTeX)
     condition_text: str  # 증명문에 쓰는 조건 설명. 예: "a의 개수와 b의 개수가 같다"
     language: BlockLanguage
     m_values: list[int]  # 깨는 쪽 게임에서 포인트마다 Lemma가 서브하는 m
-    regular: bool  # 정규 언어인지. 화면에는 경기가 끝난 뒤에만 알려준다.
+    # 막는 쪽이 이길 수 있는 언어인지: 정규 펌핑 장은 정규 언어인지, 문맥자유 펌핑 장은 문맥자유 언어인지.
+    # 화면에는 경기가 끝난 뒤에만 알려준다.
+    pumpable: bool
+    max_serve: int = MAX_SERVE  # 막는 쪽에서 서브할 수 있는 m의 최대값 (컴퓨터의 리시브 계산 시간 때문에 언어마다 다르게 둘 수 있다)
     hint: str = ""  # 깨는 쪽 힌트
     hint_defend: str = ""  # 막는 쪽 힌트
     examples_accept: list[str] = field(default_factory=list)
     examples_reject: list[str] = field(default_factory=list)
-    sample_receive: str = ""  # 정규가 아닌 언어에서 이기는 w 템플릿 예시. 테스트에서만 쓰고 화면에는 보내지 않는다.
+    sample_receive: str = ""  # 막을 수 없는 언어에서 이기는 w 템플릿 예시. 테스트에서만 쓰고 화면에는 보내지 않는다.
+
+    @property
+    def regular(self) -> bool | None:
+        """정규 언어인지. 정규 펌핑 장에서만 알 수 있다 (문맥자유 펌핑 장에서는 None)."""
+        return self.pumpable if self.chapter == "pumping" else None
+
+    @property
+    def context_free(self) -> bool | None:
+        """문맥자유 언어인지. 문맥자유 펌핑 장에서만 알 수 있다 (정규 펌핑 장에서는 None)."""
+        return self.pumpable if self.chapter == "cfl_pumping" else None
 
 
-def load_pumping_stages() -> list[PumpingStage]:
+def load_pumping_stages(chapter: str | None = "pumping") -> list[PumpingStage]:
+    """펌핑 게임 스테이지. chapter가 None이면 두 장 모두 불러온다."""
     stages = []
     for path in sorted(STAGE_DIR.glob("*/*.json")):
         data = json.loads(path.read_text(encoding="utf-8"))
         if data["chapter"] not in PUMPING_CHAPTERS:
+            continue
+        if chapter and data["chapter"] != chapter:
             continue
         lang = data["language"]
         examples = data.get("examples", {})
@@ -145,7 +166,8 @@ def load_pumping_stages() -> list[PumpingStage]:
                 condition_text=lang["condition_text"],
                 language=BlockLanguage(blocks=list(lang["blocks"]), constraint=lang["constraint"]),
                 m_values=list(data["m_values"]),
-                regular=bool(data["regular"]),
+                pumpable=bool(data[PUMPING_CHAPTERS[data["chapter"]]]),
+                max_serve=int(data.get("max_serve", MAX_SERVE)),
                 hint=data.get("hint", ""),
                 hint_defend=data.get("hint_defend", ""),
                 examples_accept=examples.get("accept", []),

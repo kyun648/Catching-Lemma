@@ -163,7 +163,7 @@ def test_list_pumping_stages_hides_answers():
     assert len(stages) >= 2
     assert roundtrips_as_json(stages)
     assert set(stages[0]) == {"id", "chapter", "title", "description", "hint", "hint_defend", "notation",
-                              "alphabet", "m_values"}
+                              "alphabet", "m_values", "max_serve"}
     assert all("regular" not in s for s in stages)  # 정규 언어인지는 경기 뒤에만 알려준다
 
 
@@ -324,3 +324,176 @@ def test_receive_scores_are_computed_once_per_stage_and_m():
     # 잘못된 m은 계산 전에 걸러서 캐시에 들어가지 않는다
     assert api.pumping_computer_receive("pump-02", True)["ok"] is False
     assert api._receive_scores.cache_info().misses == 1
+
+
+# ---------- 문맥자유 펌핑 게임 ----------
+
+
+def test_list_cfl_stages_hides_answers():
+    stages = api.list_pumping_stages("cfl_pumping")
+    assert len(stages) >= 4 and roundtrips_as_json(stages)
+    assert {s["chapter"] for s in stages} == {"cfl_pumping"}
+    assert all("context_free" not in s and "regular" not in s for s in stages)
+    assert all(s["max_serve"] >= 1 for s in stages)
+
+
+def test_cfl_break_flow():
+    received = api.pumping_receive("cfl-01", "a^m b^m c^m", 3)
+    assert received["ok"] and received["word"] == "aaabbbccc"
+    defense = api.cfl_defend("cfl-01", "aaabbbccc", 3, seed=0, point=5)
+    assert defense["ok"] and roundtrips_as_json(defense)
+    assert "".join(defense[p] for p in "uvxyz") == "aaabbbccc"
+    smash = api.cfl_smash("cfl-01", "aaabbbccc", 3, defense["cuts"], 0)
+    assert smash["ok"] and smash["in_language"] is False
+    analysis = api.cfl_analysis("cfl-01", "aaabbbccc", 3)
+    assert analysis["ok"] and roundtrips_as_json(analysis)
+    assert analysis["total"] == analysis["beaten"] == len(analysis["splits"])
+    assert sum(c["total"] for c in analysis["cases"]) == analysis["total"]
+    assert all(0 <= s["case"] < len(analysis["cases"]) for s in analysis["splits"])
+    report = api.cfl_case_report("cfl-01", "a^m b^m c^m")
+    assert report["available"] and roundtrips_as_json(report)
+
+
+def test_cfl_defend_flow_on_context_free_language():
+    received = api.cfl_computer_receive("cfl-04", 4, seed=0)
+    assert received["ok"]
+    word = received["word"]
+    k = word.index("b")
+    smash = api.cfl_computer_smash("cfl-04", word, 4, [k - 1, k, k, k + 1])  # v = 마지막 a, y = 첫 b
+    assert smash == {"ok": True, "error": None, "i": None, "pumped": None, "in_language": True}
+    best = api.cfl_best_receive("cfl-04", 4)
+    assert best["ok"] and best["winning_count"] == 0
+    assert api.cfl_reveal("cfl-04") == {"context_free": True}
+    assert api.cfl_reveal("cfl-01") == {"context_free": False}
+
+
+@pytest.mark.parametrize("cuts", [[0, 1, 1], [0, 0, 2, 2], [0, 1, 2, 9], [2, 1, 3, 4], [0, 1, 1, True], "0112", None])
+def test_cfl_api_rejects_bad_split(cuts):
+    for result in (
+        api.cfl_smash("cfl-01", "aaabbbccc", 3, cuts, 0),
+        api.cfl_computer_smash("cfl-01", "aaabbbccc", 3, cuts),
+    ):
+        assert result["ok"] is False and result["error"]
+
+
+def test_cfl_api_rejects_bad_word_m_and_i():
+    assert api.cfl_defend("cfl-01", "aabbc", 3)["ok"] is False
+    assert api.cfl_analysis("cfl-01", "aaabbbccc", 0)["ok"] is False
+    assert api.cfl_smash("cfl-01", "aaabbbccc", 3, [2, 3, 4, 5], 1)["ok"] is False
+    assert api.cfl_smash("cfl-01", "aaabbbccc", 3, [2, 3, 4, 5], True)["ok"] is False
+    assert api.cfl_computer_receive("cfl-01", 9)["ok"] is False  # max_serve 초과
+    assert api.cfl_best_receive("cfl-01", "3")["ok"] is False
+    assert api.cfl_case_report("cfl-01", None)["available"] is False
+
+
+def test_chapters_do_not_mix_engines():
+    with pytest.raises(KeyError):
+        api.pumping_defend("cfl-01", "aaabbbccc", 3)
+    with pytest.raises(KeyError):
+        api.cfl_defend("pump-01", "aaabbb", 3)
+    with pytest.raises(KeyError):
+        api.cfl_reveal("pump-01")
+
+
+def test_cfl_split_cache_stays_small():
+    """분할 분석 캐시는 키에 사용자 입력 w가 들어가므로 상한이 작아야 하고, 밀려나도 결과가 같아야 한다."""
+    assert api._cfl_splits.cache_parameters()["maxsize"] <= 8
+    api._cfl_splits.cache_clear()
+    first = api.cfl_analysis("cfl-01", "aaabbbccc", 3)
+    for n in range(4, 4 + api.CFL_SPLIT_CACHE_SIZE + 1):  # 다른 w로 캐시를 밀어낸다
+        api.cfl_analysis("cfl-01", "a" * n + "b" * n + "c" * n, 3)
+    assert api._cfl_splits.cache_info().currsize <= api.CFL_SPLIT_CACHE_SIZE
+    assert api.cfl_analysis("cfl-01", "aaabbbccc", 3) == first
+
+
+def test_cfl_api_limits_m_to_screen_range():
+    """문맥자유 분할 계산은 |w| × m³에 비례하므로 m을 화면에서 쓰는 범위(1 ~ cfl_max_m)까지만 받는다."""
+    import time
+
+    from catching_lemma.stages import load_pumping_stages
+
+    limits = {s.id: api.cfl_max_m(s) for s in load_pumping_stages("cfl_pumping")}
+    assert limits["cfl-01"] == 8 and limits["cfl-02"] == 7  # cfl-02는 max_serve 6, m_values 최대 7
+    word = "a" * 30 + "b" * 30 + "c" * 30
+    for m in (9, 12, 20):
+        start = time.perf_counter()
+        assert api.cfl_defend("cfl-01", word, m)["ok"] is False
+        assert api.cfl_analysis("cfl-01", word, m)["ok"] is False
+        assert api.cfl_smash("cfl-01", word, m, [0, 1, 1, 2], 0)["ok"] is False
+        assert time.perf_counter() - start < 0.5
+    assert api.cfl_analysis("cfl-02", "a" * 8 + "b" * 8 + "c" * 8, 8)["ok"] is False
+
+
+@pytest.mark.parametrize("m", [1, 2, 8])
+def test_cfl_analysis_accepts_serves_outside_m_values(m):
+    """막는 쪽에서 m_values(3 ~ 7) 밖의 m을 서브해도 포인트 뒤 분석이 돼야 한다."""
+    received = api.cfl_computer_receive("cfl-04", m, seed=0)
+    assert received["ok"]
+    assert api.cfl_analysis("cfl-04", received["word"], m)["ok"]
+
+
+# ---------- PR #4 리뷰 반영 ----------
+
+
+def test_pumping_receive_uses_cfl_m_limit_for_cfl_stages():
+    """공용 리시브도 문맥자유 스테이지에는 수비와 같은 m 상한을 쓴다 (리시브만 통과하고 수비에서 거부되지 않도록)."""
+    bad = api.pumping_receive("cfl-01", "a^m b^m c^m", 9)
+    assert bad["ok"] is False and bad["kind"] == "bad_m"
+    assert api.cfl_defend("cfl-01", "aaabbbccc", 9, seed=1)["ok"] is False
+    assert api.pumping_receive("cfl-01", "a^m b^m c^m", 8)["ok"] is True
+    # 정규 스테이지는 그대로 20까지
+    assert api.pumping_receive("pump-01", "a^m b^m", 9)["ok"] is True
+
+
+def test_cfl_case_report_is_cached_but_returns_fresh_dicts():
+    api._cfl_case_report.cache_clear()
+    first = api.cfl_case_report("cfl-01", "a^m b^m c^m")
+    second = api.cfl_case_report("cfl-01", "a^m b^m c^m")
+    assert first == second and first["available"]
+    assert first is not second and first["rows"] is not second["rows"]
+    first["rows"].clear()  # 한 세션이 결과를 바꿔도 다음 호출에는 영향이 없다
+    assert api.cfl_case_report("cfl-01", "a^m b^m c^m")["rows"]
+    assert api._cfl_case_report.cache_info().hits >= 2
+
+
+def test_cfl_case_report_cache_does_not_leak_or_keep_padded_templates():
+    """checked_m도 매번 새 목록이고, 앞뒤 공백을 붙인 템플릿은 공백을 뺀 키로 캐시한다."""
+    api._cfl_case_report.cache_clear()
+    first = api.cfl_case_report("cfl-01", "a^m b^m c^m")
+    first["checked_m"].append(99)
+    assert 99 not in api.cfl_case_report("cfl-01", "a^m b^m c^m")["checked_m"]
+
+    padded = api.cfl_case_report("cfl-01", "a^m b^m c^m" + " " * 100_000)
+    assert padded["available"]
+    assert api._cfl_case_report.cache_info().currsize == 1  # 공백을 붙여도 같은 키
+    too_long = api.cfl_case_report("cfl-01", "a^m b^m c^m" * 20)
+    assert too_long["available"] is False
+    assert api._cfl_case_report.cache_info().currsize == 1  # 길이 상한을 넘으면 캐시하지 않는다
+
+
+def test_cfl_analysis_sends_played_split_and_capped_rows():
+    """분할이 2만 개가 넘어도 화면에는 이번 분할과 일부(막히는 분할부터)만 보낸다."""
+    import json
+
+    word = "a" * 84 + "b" * 84  # m = 8에서 가장 긴 리시브 길이(168)
+    assert api.cfl_defend("cfl-04", word, 8, seed=0)["ok"]
+    k = word.index("b")
+    analysis = api.cfl_analysis("cfl-04", word, 8, played=[k - 1, k, k, k + 1])
+    assert analysis["ok"] and roundtrips_as_json(analysis)
+    assert analysis["total"] == 25_410
+    assert len(analysis["splits"]) == api.CFL_ANALYSIS_ROWS
+    assert len(json.dumps(analysis, ensure_ascii=False)) < 300_000  # 전체를 보내면 약 7MB
+    played = analysis["played"]
+    assert played["cuts"] == [k - 1, k, k, k + 1] and played["breaking"] == []  # v = a, y = b는 막힌다
+    assert analysis["cases"][played["case"]]["label"] == "v: a만 · y: b만"
+    blocked = [s for s in analysis["splits"] if not s["breaking"]]
+    assert analysis["splits"][: len(blocked)] == blocked  # 막히는 분할이 앞에 온다
+
+
+def test_cfl_analysis_played_is_optional_and_validated():
+    whole = api.cfl_analysis("cfl-01", "aaabbbccc", 3)
+    assert whole["ok"] and whole["played"] is None
+    assert whole["total"] == len(whole["splits"])  # 작으면 전부 보낸다
+    for bad in ([0, 0, 2, 2], [0, 1, 1, 9], [0, 1, 1, True], "0112"):
+        result = api.cfl_analysis("cfl-01", "aaabbbccc", 3, played=bad)
+        assert result["ok"] is False and result["played"] is None and result["splits"] == []
