@@ -27,7 +27,7 @@ Catching Lemma는 게임의 각 차례가 증명의 어느 문장에 해당하�
 
 ## 설치와 실행
 
-Python 3.10 이상과 Streamlit 1.49 이상이 필요합니다 (`requirements.txt`로 함께 설치됩니다).
+Python 3.10 이상과 Streamlit 1.61 이상이 필요합니다 (`requirements.txt`로 함께 설치됩니다). 화면 테스트(`tests/test_app.py`)가 쓰는 Streamlit AppTest가 1.60 이하에서는 화면 전환 뒤 사라진 위젯을 남겨둬서 실패하기 때문입니다.
 
 ```bash
 git clone https://github.com/kyun648/Catching-Lemma.git

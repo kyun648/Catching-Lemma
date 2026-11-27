@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
+from catching_lemma import api
+
 APP = str(Path(__file__).resolve().parent.parent / "app.py")
 BREAK = "깨는 쪽 (Lemma에 반박)"
 DEFEND = "막는 쪽 (Lemma 편)"
@@ -25,10 +27,15 @@ def open_chapter(chapter: str) -> AppTest:
     return at
 
 
+PUMPING_CHAPTERS = {"3. 정규 펌핑 게임": "pumping", "4. 문맥자유 펌핑 게임": "cfl_pumping"}
+
+
 def open_game(chapter: str, stage_id: str, role: str) -> AppTest:
     at = open_chapter(chapter)
-    stage = at.sidebar.selectbox[0]
-    stage.set_value(next(o for o in stage.options if o.startswith(stage_id))).run()
+    # 선택 상자에는 화면과 같은 원래 스테이지 dict를 넘긴다. 표시 문자열("pump-01 · ...")을 넘기면
+    # 일부 Streamlit 버전의 AppTest가 format_func(문자열)을 불러 TypeError가 난다.
+    stages = api.list_pumping_stages(PUMPING_CHAPTERS[chapter])
+    at.sidebar.selectbox[0].set_value(next(s for s in stages if s["id"] == stage_id)).run()
     at.sidebar.radio[1].set_value(role).run()
     assert not at.exception, at.exception
     return at
