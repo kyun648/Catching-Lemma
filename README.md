@@ -72,8 +72,9 @@ catching-lemma/
 │   ├── engine/
 │   │   ├── dfa.py              # DFA 표현, 검증, 실행, 최단 반례, 최소 상태 수
 │   │   ├── nfa.py              # NFA 표현, λ-closure, 실행, 부분집합 구성
-│   │   ├── pumping.py          # 블록 언어, w 템플릿, 분할 분석, 수비 선택, 증명문 (정규)
-│   │   └── cfl_pumping.py      # uvxyz 분할 분석, 경우 분류, 경우별 정리 표 (문맥자유)
+│   │   ├── pumping_common.py   # 두 펌핑 게임 공통: 계산기, 블록 언어, w 템플릿, 수비·리시브 선택
+│   │   ├── pumping.py          # 정규 펌핑: xyz 분할 분석, 리시브 점수, 증명문
+│   │   └── cfl_pumping.py      # 문맥자유 펌핑: uvxyz 분할 분석, 경우 분류, 경우별 정리 표
 │   ├── stages.py               # 스테이지 불러오기와 채점
 │   ├── diagram.py              # DFA·NFA → Graphviz DOT 변환
 │   └── stage_data/
@@ -81,13 +82,15 @@ catching-lemma/
 │       ├── nfa/*.json          # NFA 스테이지 정의
 │       ├── pumping/*.json      # 정규 펌핑 게임 언어 정의
 │       └── cfl_pumping/*.json  # 문맥자유 펌핑 게임 언어 정의
-└── tests/                      # pytest 테스트
+└── tests/                      # pytest 테스트 (test_app.py는 Streamlit AppTest로 화면 동작을 확인)
 ```
 
 표기는 교재(Linz)를 따릅니다. 빈 문자열은 λ, 펌핑 길이는 m, 펌핑할 문자열은 w, 분할은 w = xyz(정규)와 w = uvxyz(문맥자유)입니다.
 
 화면(`app.py`)은 `catching_lemma.api`만 쓰고, 엔진과는 오토마타 JSON(dict) 형식으로만 주고받습니다.
 엔진 내부를 바꿔도 `api.py`가 돌려주는 형식만 지키면 화면은 고치지 않아도 됩니다. `tests/test_api.py`가 이 규칙을 검사합니다.
+펌핑 엔진은 공통 부분(`pumping_common.py`)과 분할 모양별 부분(`pumping.py`, `cfl_pumping.py`)으로 나뉩니다. 두 게임 모듈은 서로를 import하지 않고
+공통 모듈만 씁니다(`tests/test_pumping_common.py`가 검사). 새 분할 규칙의 게임을 붙일 때는 분할 나열·펌핑·분석만 새로 만들면 됩니다.
 펌핑 게임 api는 받은 값(m, w, 분할 위치, i)을 스스로 확인하고, 잘못된 값이면 예외 대신 `{"ok": False, "error": ...}`를 돌려줍니다.
 사용자가 입력한 w는 문자열을 만들기 전에 길이를 계산하고, 펌핑한 뒤에도 판정 상한(200글자)을 넘지 않도록 w를 `200 − 4m`글자 이하로 제한합니다.
 

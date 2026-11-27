@@ -716,8 +716,16 @@ def show_case_table(analysis: dict, current: int, role: str) -> None:
                        "(막히는 분할이 있으면 그중 하나).")
 
 
-def show_case_report(sid: str, template: str) -> None:
+def show_case_report(sid: str, template: str, verdict: str) -> None:
+    """깨는 쪽이 이긴 문맥자유 경기: 정답 안내 한 줄 + 경우별 정리 표.
+
+    표를 만들 수 있는지 먼저 확인하고 안내 문구를 고른다 (만들 수 없으면 정답만 알리고 이유는 아래 상자에 맡긴다).
+    """
     report = api.cfl_case_report(sid, template)
+    if report["available"]:
+        st.info(f"이 언어는 {verdict} 아래는 이번 경기 기록(리시브)으로 정리한 경우별 정리 표예요.")
+    else:
+        st.info(f"이 언어는 {verdict}")
     with st.container(border=True):
         st.markdown("**경기 기록지 → 경우별 정리**")
         if not report["available"]:
@@ -766,7 +774,12 @@ def show_game_end(game: dict, sid: str) -> None:
             st.info(f"이 언어는 {verdict} m이 충분히 크면 Lemma는 언제나 막을 코스를 찾을 수 있어서, "
                     "펌핑 보조정리로는 반박할 수 없어요. 막는 쪽으로도 해보세요.")
         elif won and kind == "pumping":
+            # 증명문을 만들 수 있는지 먼저 확인하고 안내 문구를 고른다 (만들 수 없으면 이유는 아래 상자에 맡긴다)
             proof = api.pumping_proof(sid, game["template"])
+            if proof["available"]:
+                st.info(f"이 언어는 {verdict} 아래는 이번 경기 기록(리시브)으로 정리한 증명문이에요.")
+            else:
+                st.info(f"이 언어는 {verdict}")
             with st.container(border=True):
                 st.markdown("**경기 기록지 → 증명문**")
                 if proof["available"]:
@@ -774,7 +787,7 @@ def show_game_end(game: dict, sid: str) -> None:
                 else:
                     st.info(f"이번 리시브로는 증명문을 자동으로 쓸 수 없어요. {proof['reason']}")
         elif won:
-            show_case_report(sid, game["template"])
+            show_case_report(sid, game["template"], verdict)
         else:
             st.info(f"이 언어는 {verdict} 어떤 수비도 뚫는 리시브가 있으니, 리시브(w)를 바꿔서 다시 도전해보세요.")
     else:

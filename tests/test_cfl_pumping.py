@@ -21,12 +21,12 @@ from catching_lemma.engine.cfl_pumping import (
     letter_runs,
     summarize_cases,
 )
-from catching_lemma.engine.pumping import (
+from catching_lemma.engine.pumping_common import (
     SMASH_VALUES,
     BlockLanguage,
-    best_receives,
-    choose_receive,
     max_receive_length,
+    pick_receive,
+    winning_receives,
 )
 
 ANBNCN = BlockLanguage(["a", "b", "c"], "n0 == n1 == n2")
@@ -131,11 +131,11 @@ def test_non_context_free_has_winning_receive_and_cfl_does_not():
         assert not cfl_has_winning_receive(ANBN, m)
 
 
-def test_choose_receive_with_cfl_scores():
+def test_pick_receive_with_cfl_scores():
     scores = cfl_receive_scores(ANBNCN, 3)
-    choice = choose_receive(ANBNCN, 3, random.Random(0), 0.0, scores=scores)
+    choice = pick_receive(scores, random.Random(0), 0.0)
     assert choice.mode == "best" and choice.winning
-    winning, total = best_receives(ANBNCN, 3, scores=scores)
+    winning, total = winning_receives(scores)
     assert winning and total == len(scores)
 
 
@@ -235,11 +235,11 @@ def test_case_report_accepts_polynomial_exponents():
      ("7", False), ("m-1", False), ("2*m-2", False), ("0", False), ("m*m-2*m+2", False)],
 )
 def test_at_least_m_for_all_m(expr, expected):
-    from catching_lemma.engine.pumping import at_least_m_for_all_m
+    from catching_lemma.engine.pumping_common import at_least_m_for_all_m
 
     assert at_least_m_for_all_m(expr) is expected
     if expected:  # 참이라고 했으면 실제로도 성립해야 한다
-        from catching_lemma.engine.pumping import evaluate
+        from catching_lemma.engine.pumping_common import evaluate
 
         assert all(evaluate(expr, {"m": m}, arithmetic_only=True) >= m for m in range(1, 60))
 
@@ -255,7 +255,7 @@ def test_split_count_matches_enumeration():
 def test_case_report_requires_checked_m_at_least_3():
     """m = 1, 2에서는 v가 블록 경계에 걸치고 y가 다음 블록에 있는 경우(|vxy| ≥ 3)가 나타나지 않아서 표가 불완전하다."""
     from catching_lemma.engine.cfl_pumping import MIN_CASE_REPORT_M, cfl_case_report
-    from catching_lemma.engine.pumping import BlockLanguage
+    from catching_lemma.engine.pumping_common import BlockLanguage
 
     lang = BlockLanguage(["a", "b", "c"], "n0 == n1 == n2")
     assert MIN_CASE_REPORT_M == 3

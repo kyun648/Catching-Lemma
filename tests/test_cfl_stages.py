@@ -9,7 +9,7 @@ from catching_lemma.engine.cfl_pumping import (
     cfl_has_winning_receive,
     cfl_receive_work,
 )
-from catching_lemma.engine.pumping import expand_template, parse_template
+from catching_lemma.engine.pumping_common import expand_template, parse_template
 from catching_lemma.stages import MAX_SERVE, load_pumping_stages, load_stages
 
 STAGES = load_pumping_stages("cfl_pumping")

@@ -14,7 +14,7 @@ from .engine import (
     find_counterexample,
     minimal_state_count,
 )
-from .engine.pumping import BlockLanguage
+from .engine.pumping_common import BlockLanguage
 
 STAGE_DIR = Path(__file__).parent / "stage_data"
 
