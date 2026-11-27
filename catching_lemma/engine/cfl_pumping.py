@@ -1,6 +1,6 @@
 """문맥자유 언어의 펌핑 보조정리 게임 엔진.
 
-정규 펌핑 게임(pumping.py)과 같은 블록 언어, w 템플릿, 실수 비율을 쓰고 분할만 다르다.
+정규 펌핑 게임(pumping.py)과 같은 공통 엔진(pumping_common.py: 블록 언어, w 템플릿, 실수 비율, 수비·리시브 선택)을 쓰고 분할만 다르다.
 
     w = uvxyz,  |vxy| ≤ m,  |vy| ≥ 1,  모든 i ≥ 0에 대해 uvⁱxyⁱz ∈ L
 
@@ -19,12 +19,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import comb
 
-from .pumping import (
+from .pumping_common import (
     SMASH_VALUES,
     BlockLanguage,
+    ExpressionError,
     ReceiveScore,
+    TemplateError,
+    at_least_m_for_all_m,
     candidate_words,
+    expand_template,
     max_receive_length,
+    parse_template,
 )
 
 Cuts = tuple[int, int, int, int]
@@ -160,7 +165,7 @@ def _score(member: Membership, word: str, m: int) -> ReceiveScore:
 
 
 def cfl_receive_scores(language: BlockLanguage, m: int) -> tuple[ReceiveScore, ...]:
-    """후보 w마다 뚫을 수 있는 수비 코스 수. pumping.choose_receive / best_receives에 scores로 넘긴다."""
+    """후보 w마다 뚫을 수 있는 수비 코스 수. pumping_common.pick_receive / winning_receives에 넘긴다."""
     member = Membership(language)
     return tuple(_score(member, w, m) for w in cfl_candidate_words(language, m))
 
@@ -309,8 +314,6 @@ def cfl_case_report(language: BlockLanguage, template: str, checked_m: list[int]
     - 경우마다, 확인한 모든 m에서 그 경우의 모든 분할을 뚫는 i가 하나 이상 있어야 한다.
     마지막 두 조건은 유한한 m에 대한 확인이므로 화면에 확인 범위를 함께 보여준다.
     """
-    from .pumping import ExpressionError, TemplateError, at_least_m_for_all_m, expand_template, parse_template
-
     if not checked_m or min(checked_m) < MIN_CASE_REPORT_M:
         return CaseReport(
             False, [],

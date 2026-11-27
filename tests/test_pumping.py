@@ -3,29 +3,31 @@ import random
 import pytest
 
 from catching_lemma.engine.pumping import (
+    MAX_RECEIVE_CANDIDATES,
+    analyze_splits,
+    beaten_fraction,
+    best_receives,
+    build_proof,
+    choose_receive,
+    computer_smash,
+    is_winning_receive,
+    pump,
+    receive_scores,
+    regular_candidate_words,
+    split_error,
+)
+from catching_lemma.engine.pumping_common import (
     SMASH_VALUES,
     BlockLanguage,
     ExpressionError,
     TemplateError,
-    analyze_splits,
-    best_receives,
-    build_proof,
-    candidate_words,
-    choose_defense,
-    choose_receive,
-    computer_smash,
     WordTooLongError,
+    choose_defense,
     evaluate,
     expand_template,
     max_receive_length,
-    MAX_RECEIVE_CANDIDATES,
-    beaten_fraction,
     mistake_rate,
     parse_template,
-    is_winning_receive,
-    pump,
-    receive_scores,
-    split_error,
 )
 
 ANBN = BlockLanguage(["a", "b"], "n0 == n1")
@@ -264,10 +266,10 @@ EVEN_A = BlockLanguage(["a"], "n0 % 2 == 0")  # (aa)*: 정규 언어
 A_STAR_B_STAR = BlockLanguage(["a", "b"], "n0 >= 0")  # a*b*: 정규 언어
 
 
-def test_candidate_words():
-    words = candidate_words(ANBN, 3)
+def test_regular_candidate_words():
+    words = regular_candidate_words(ANBN, 3)
     assert words == ["aabb", "aaabbb", "aaaabbbb"]  # |w| ≥ 3, |w| ≤ 2·3 + 3
-    assert all(len(w) >= 3 and A_LESS_B.contains(w) for w in candidate_words(A_LESS_B, 3))
+    assert all(len(w) >= 3 and A_LESS_B.contains(w) for w in regular_candidate_words(A_LESS_B, 3))
 
 
 def test_non_regular_language_always_has_winning_receive():
@@ -370,6 +372,6 @@ def test_early_exit_reduces_membership_checks():
 
     lang = Counting(["a", "b"], "n1 > n0")
     receive_scores(lang, 6)
-    full = sum(len(analyze_splits(A_LESS_B, w, 6)) * len(SMASH_VALUES) for w in candidate_words(A_LESS_B, 6))
+    full = sum(len(analyze_splits(A_LESS_B, w, 6)) * len(SMASH_VALUES) for w in regular_candidate_words(A_LESS_B, 6))
     assert calls["n"] < full
-    assert MAX_RECEIVE_CANDIDATES >= len(candidate_words(A_STAR_B_STAR, 8))
+    assert MAX_RECEIVE_CANDIDATES >= len(regular_candidate_words(A_STAR_B_STAR, 8))

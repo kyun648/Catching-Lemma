@@ -7,10 +7,9 @@ from catching_lemma.engine.pumping import (
     analyze_splits,
     best_receives,
     build_proof,
-    candidate_words,
-    expand_template,
-    parse_template,
+    regular_candidate_words,
 )
+from catching_lemma.engine.pumping_common import expand_template, parse_template
 from catching_lemma.stages import MAX_SERVE, load_pumping_stages, load_stages
 
 STAGES = load_pumping_stages()
@@ -109,5 +108,5 @@ def test_defender_game_receive_stays_light(stage):
     블록이 많고 조건이 느슨한 언어는 후보가 급격히 늘어 리시브 한 번에 수 초~수 분이 걸린다.
     이 검사에 걸리면 조건을 좁히거나, 블록 수를 줄이거나, 스테이지의 max_serve를 낮춰주세요.
     """
-    count = len(candidate_words(stage.language, stage.max_serve))
+    count = len(regular_candidate_words(stage.language, stage.max_serve))
     assert count <= MAX_RECEIVE_CANDIDATES, f"후보 w가 {count}개예요 (상한 {MAX_RECEIVE_CANDIDATES})."

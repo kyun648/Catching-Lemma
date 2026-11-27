@@ -40,11 +40,13 @@ reviews:
         - 빈 문자열, 상태가 없는 경우, 빠진 전이, 무한 루프 가능성 같은 경계 조건을 확인한다.
         - 빠진 전이는 오류가 아니라 죽은 상태(DEAD)로 가서 거부하는 것이 프로젝트 규칙이다.
         - 동작을 바꾸는 변경에 tests/ 테스트가 함께 있는지 확인한다.
+        - 펌핑 엔진의 의존 방향: pumping_common.py는 두 게임(pumping.py, cfl_pumping.py)을 import하지 않고, 두 게임 모듈도 서로를 import하지 않는다(공통 모듈만 쓴다). 분할 모양(xyz, uvxyz)에 따른 코드가 pumping_common.py에 들어가거나, 두 게임에서 같이 쓰는 부품이 한쪽 게임 모듈에 들어가면 지적한다. (tests/test_pumping_common.py가 의존 방향을 검사한다)
     - path: "app.py"
       instructions: |
         - app.py는 catching_lemma 패키지에서 catching_lemma.api만 import한다. engine, stages, diagram을 직접 import하면 지적한다. (tests/test_api.py가 같은 규칙을 검사한다)
         - DFA·NFA 객체나 결과 dataclass를 다루지 않고, api 함수가 돌려주는 dict만 쓰는지 확인한다. 기계 종류는 isinstance가 아니라 dict의 "type" 값으로 구분한다.
         - 사용자에게 보이는 문구는 한국어여야 한다.
+        - 화면 흐름(버튼, 입력, 경기 진행)이 바뀌면 tests/test_app.py(Streamlit AppTest)도 함께 고쳐졌는지 확인한다.
     - path: "catching_lemma/api.py"
       instructions: |
         - 화면과 엔진 사이의 유일한 창구다. 모든 함수의 입력과 출력이 JSON으로 바꿀 수 있는 값(dict, list, str, int, bool, None)인지 확인한다. set, frozenset, dataclass, 엔진 객체를 그대로 돌려주면 지적한다.

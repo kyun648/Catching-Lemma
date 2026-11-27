@@ -16,23 +16,27 @@ from functools import lru_cache
 from .diagram import to_dot
 from .engine import LAMBDA, MAX_DFA_STATES, NFA, TooManyStatesError, automaton_from_dict
 from .engine.pumping import (
+    analyze_splits,
+    best_receives,
+    build_proof,
+    choose_receive,
+    computer_smash,
+    pump,
+    receive_scores,
+    split_error,
+)
+from .engine.pumping_common import (
     MAX_TEMPLATE_LENGTH,
     SMASH_VALUES,
     TemplateError,
     WordTooLongError,
-    analyze_splits,
-    best_receives,
-    build_proof,
     choose_defense,
-    choose_receive,
-    computer_smash,
     expand_template,
     max_receive_length,
     mistake_rate,
     parse_template,
-    pump,
-    receive_scores,
-    split_error,
+    pick_receive,
+    winning_receives,
 )
 from .engine.cfl_pumping import (
     analyze_cfl_splits,
@@ -653,9 +657,7 @@ def cfl_computer_receive(stage_id: str, m: int, point: int = 0, seed: int | None
     stage = _find_pumping_stage(stage_id, "cfl_pumping")
     if error := _serve_error(m, stage):
         return {"ok": False, "word": None, "mode": None, "error": error}
-    choice = choose_receive(
-        stage.language, m, random.Random(seed), pumping_mistake_rate(point), scores=_cfl_receive_scores(stage_id, m)
-    )
+    choice = pick_receive(_cfl_receive_scores(stage_id, m), random.Random(seed), pumping_mistake_rate(point))
     if choice is None:
         return {"ok": False, "word": None, "mode": None, "error": f"m = {m}일 때 고를 수 있는 w가 없어요."}
     return {"ok": True, "word": choice.word, "mode": choice.mode, "error": None}
@@ -682,7 +684,7 @@ def cfl_best_receive(stage_id: str, m: int) -> dict:
     stage = _find_pumping_stage(stage_id, "cfl_pumping")
     if error := _serve_error(m, stage):
         return {"ok": False, "error": error, "winning_words": [], "winning_count": 0, "total": 0}
-    winning, total = best_receives(stage.language, m, scores=_cfl_receive_scores(stage_id, m))
+    winning, total = winning_receives(_cfl_receive_scores(stage_id, m))
     return {"ok": True, "error": None, "winning_words": winning[:3], "winning_count": len(winning), "total": total}
 
 
