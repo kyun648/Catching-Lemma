@@ -16,12 +16,20 @@ from catching_lemma.api import LAMBDA
 CHAPTERS = {
     "1. DFA": "dfa",
     "2. NFA": "nfa",
-    "3. 정규 펌핑 게임": "pumping",
-    "4. 문맥자유 펌핑 게임": "cfl_pumping",
+    "3. Pumping Rally": "pumping_game",
 }
 
 
 # ---------- 표시 도우미 ----------
+
+
+def theme_type() -> str | None:
+    """화면 테마("light" 또는 "dark"). 모르면 None이고, 그래프는 두 테마 모두에서 보이는 회색으로 그린다.
+
+    Streamlit은 테마를 바꾼 직후나 처음 열 때 이전 값을 줄 수 있어서, 다음 화면 갱신 때 맞춰진다.
+    """
+    kind = st.context.theme.type
+    return kind if kind in ("light", "dark") else None
 
 
 def show_word(word: str) -> str:
@@ -57,7 +65,7 @@ def state_inputs(key: str) -> tuple[list[str], str, list[str]]:
     )
     c1, c2 = st.columns(2)
     start = (
-        c1.selectbox("시작 상태", states, key=f"{key}-start-{len(states)}") if states else ""
+        c1.selectbox("시작 상태", states, key=f"{key}-start-{len(states)}", filter_mode=None) if states else ""
     )
     accept = c2.multiselect("종료 상태", states, key=f"{key}-accept-{','.join(states)}")
     return states, start or "", accept
@@ -165,7 +173,9 @@ def show_result(result: dict, machine: dict) -> None:
 
 def stage_chapter(chapter: str) -> None:
     stages = api.list_stages(chapter)
-    stage = st.sidebar.selectbox("스테이지", stages, format_func=lambda s: f"{s['id']} · {s['title']}")
+    stage = st.sidebar.selectbox(
+        "스테이지", stages, format_func=lambda s: f"{s['id']} · {s['title']}", filter_mode=None
+    )
     key = stage["id"]
     result_key = f"{key}-result"
 
@@ -205,7 +215,7 @@ def stage_chapter(chapter: str) -> None:
     with right:
         if machine["states"]:
             cex = result["counterexample"] if result is not None else None
-            st.graphviz_chart(api.diagram(machine, cex))
+            st.graphviz_chart(api.diagram(machine, cex, theme_type()))
             if chapter == "nfa":
                 st.caption("겹원은 종료 상태, 칠해진 상태는 반례를 끝까지 읽은 뒤 남아 있는 상태예요.")
             else:
@@ -221,7 +231,7 @@ def stage_chapter(chapter: str) -> None:
                     f"NFA 상태들의 집합 하나하나가 DFA의 상태가 돼요. 도달 가능한 집합만 만들었더니 {len(dfa['states'])}개예요. "
                     "빈 집합(∅)으로 가는 전이는 그리지 않았어요."
                 )
-                st.graphviz_chart(api.diagram(dfa))
+                st.graphviz_chart(api.diagram(dfa, theme=theme_type()))
 
 
 # ---------- 펌핑 게임 (탁구 4구 랠리) ----------
@@ -237,42 +247,52 @@ CLAIM = {"pumping": "정규 언어", "cfl_pumping": "문맥자유 언어"}
 PARTS = {"pumping": ("x", "y", "z"), "cfl_pumping": ("u", "v", "x", "y", "z")}
 PUMPED_PARTS = {"pumping": ("y",), "cfl_pumping": ("v", "y")}
 
-RULES = """
-펌핑 보조정리를 **탁구 4구 랠리**로 진행해요. Lemma는 "L은 정규 언어"라고 주장해요.
-**깨는 쪽**은 Lemma의 주장에 반박하고, **막는 쪽**은 Lemma 편에서 주장을 지켜요.
+# Pumping Rally 장(펌핑 게임): 공통 규칙을 먼저 보여주고, 그 아래에서 정규·문맥자유 게임을 고른다.
+KINDS = {"정규 펌핑 게임 (w = xyz)": "pumping", "문맥자유 펌핑 게임 (w = uvxyz)": "cfl_pumping"}
+
+COMMON_RULES = """
+펌핑 보조정리를 **탁구 4구 랠리**로 진행해요.
+
+**깨는 쪽**은 Lemma의 주장(무엇을 주장하는지는 아래 게임별 규칙에 있어요)에 반박하고, **막는 쪽**은 Lemma 편에서 주장을 지켜요.
 
 | 순서 | 하는 일 | 증명 문장 | 깨는 쪽일 때 | 막는 쪽일 때 |
 |---|---|---|---|---|
 | 1구 서브 | 펌핑 길이 $m$을 정해요 | 모든 $m$에 대해 | Lemma | 나 |
-| 2구 리시브 | $w \\in L$, $|w| \\ge m$인 $w$를 골라요 | 어떤 $w$가 존재해서 | 나 | 컴퓨터 |
-| 3구 수비 | $|xy| \\le m$, $|y| \\ge 1$인 분할 $w = xyz$를 골라요 | 모든 분할에 대해 | Lemma | 나 |
-| 4구 스매시 | $xy^iz \\notin L$이 되는 $i$를 골라요 | 어떤 $i$가 존재해서 | 나 | 컴퓨터 |
+| 2구 리시브 | $w \\in L$, $\\lvert w \\rvert \\ge m$인 $w$를 골라요 | 어떤 $w$가 존재해서 | 나 | 컴퓨터 |
+| 3구 수비 | $w$를 조각으로 나눠요 (나누는 규칙은 게임마다 달라요) | 모든 분할에 대해 | Lemma | 나 |
+| 4구 스매시 | 펌핑한 문자열이 $L$ 밖으로 나가는 $i$를 골라요 | 어떤 $i$가 존재해서 | 나 | 컴퓨터 |
 
-- 스매시가 들어가면(= $xy^iz \\notin L$) 깨는 쪽, 막히면 막는 쪽이 득점해요. **먼저 3포인트**를 따면 이겨요.
-- 컴퓨터는 보통 최선의 수를 두지만 가끔 실수해요. 실수는 1포인트 40%에서 시작해 포인트마다 줄어서 10%까지 내려가요.
+**점수**
+- 스매시가 들어가면(펌핑한 문자열 $\\notin L$) 깨는 쪽, 막히면 막는 쪽이 득점해요.
+- **먼저 3포인트**를 따면 이겨요.
+
+**컴퓨터**
+- 컴퓨터는 최선의 수를 두지만, 처음 두 포인트에서는 가끔 실수해요 (1포인트 20%, 2포인트 10%).
+- 3포인트부터는 실수하지 않아요. 그래서 컴퓨터의 실수만으로는 이길 수 없어요.
+- 막는 쪽에서 컴퓨터는 $i = 0, 2, 3, 4, 5$를 시험해요. 모두 $L$ 안이면 막은 거예요.
+
+**입력과 정답**
+- 깨는 쪽의 $w$는 블록 형태로 적어요: `a^m b^m`, `a^(2m) b^m`, `a^(m*m)`.
+- 지수에는 $m$과 정수, `+ - *`, 괄호를 쓸 수 있어요.
 - 깨는 쪽에서 진짜로 이기는 리시브는 **Lemma가 어떤 코스로 수비해도** 스매시가 들어가는 리시브예요.
-- 막는 쪽에서 컴퓨터는 $i = 0, 2, 3, 4, 5$를 시험해요. 모두 L 안이면 막은 거예요.
-- 깨는 쪽의 $w$는 블록 형태로 적어요: `a^m b^m`, `a^m b^(m+1)`, `a^(2m) b^m`. 지수에는 $m$과 정수, `+ - *`를 쓸 수 있어요.
-- 이 언어가 정규 언어인지는 경기가 끝나면 알려줘요.
+- 이 언어가 정규(문맥자유) 언어인지는 경기가 끝나면 알려줘요.
 """
 
-CFL_RULES = """
-문맥자유 언어의 펌핑 보조정리도 **탁구 4구 랠리**로 진행해요. Lemma는 "L은 문맥자유 언어"라고 주장해요.
-정규 펌핑 게임과 달리 수비(분할)가 **다섯 조각** $w = uvxyz$이고, $v$와 $y$ **두 곳**을 함께 펌핑해요.
-
-| 순서 | 하는 일 | 증명 문장 | 깨는 쪽일 때 | 막는 쪽일 때 |
-|---|---|---|---|---|
-| 1구 서브 | 펌핑 길이 $m$을 정해요 | 모든 $m$에 대해 | Lemma | 나 |
-| 2구 리시브 | $w \\in L$, $|w| \\ge m$인 $w$를 골라요 | 어떤 $w$가 존재해서 | 나 | 컴퓨터 |
-| 3구 수비 | $|vxy| \\le m$, $|vy| \\ge 1$인 분할 $w = uvxyz$를 골라요 | 모든 분할에 대해 | Lemma | 나 |
-| 4구 스매시 | $uv^ixy^iz \\notin L$이 되는 $i$를 골라요 | 어떤 $i$가 존재해서 | 나 | 컴퓨터 |
-
-- 정규 게임과 가장 큰 차이: $vxy$는 $w$의 **앞쪽이 아니라 어디에나** 올 수 있어요. 대신 $v$와 $y$를 같은 횟수만큼 함께 펌핑해요.
-- 점수, 실수 비율, $i = 0, 2, 3, 4, 5$ 규칙은 정규 펌핑 게임과 같아요.
-- 포인트가 끝나면 수비 코스를 **경우**(v와 y가 각각 어느 글자 블록에 있는가)별로 묶은 표를 보여줘요. 교재의 경우 나누기 증명과 같은 방식이에요.
-- 깨는 쪽의 $w$는 블록 형태로 적어요: `a^m b^m c^m`, `a^(m*m)`. 지수에는 $m$과 정수, `+ - *`를 쓸 수 있어요.
-- 이 언어가 문맥자유 언어인지는 경기가 끝나면 알려줘요.
-"""
+KIND_RULES = {
+    "pumping": """
+**정규 펌핑 게임**: Lemma는 "L은 정규 언어"라고 주장해요.
+- 3구 수비: $|xy| \\le m$, $|y| \\ge 1$인 분할 $w = xyz$. $y$는 $w$의 **앞쪽 $m$글자 안**에서만 골라요.
+- 4구 스매시: $xy^iz \\notin L$이 되는 $i$를 골라요.
+- 깨는 쪽으로 이기면 경기 기록으로 **증명문**을 정리해줘요.
+""",
+    "cfl_pumping": """
+**문맥자유 펌핑 게임**: Lemma는 "L은 문맥자유 언어"라고 주장해요.
+- 3구 수비: $|vxy| \\le m$, $|vy| \\ge 1$인 분할 $w = uvxyz$. $vxy$는 $w$의 앞쪽이 아니라 **어디에나** 올 수 있어요.
+- 4구 스매시: $uv^ixy^iz \\notin L$이 되는 $i$를 골라요. $v$와 $y$를 **같은 횟수만큼 함께** 펌핑해요.
+- 포인트가 끝나면 수비 코스를 **경우**($v$와 $y$가 각각 어느 글자 블록에 있는가)별로 묶은 표를 보여줘요.
+- 교재의 경우 나누기 증명과 같은 방식이에요.
+""",
+}
 
 
 def new_game(role: str, kind: str) -> dict:
@@ -581,9 +601,21 @@ def play_defend(game: dict, stage: dict, key: str) -> None:
                 st.rerun()
 
 
-def pumping_chapter(kind: str = "pumping") -> None:
+def pumping_chapter() -> None:
+    """Pumping Rally 장(펌핑 게임). 본문 위쪽에 공통 규칙, 그 아래에 게임 종류(정규·문맥자유) 선택과 게임별 규칙을 둔다."""
+    st.header("Pumping Rally")
+    st.caption("펌핑 보조정리를 탁구 랠리로 겨루는 게임")
+    with st.expander("공통 규칙 (처음이라면 먼저 읽어보세요)", expanded=True):
+        st.markdown(COMMON_RULES)
+    kind = KINDS[st.radio("게임", list(KINDS), horizontal=True, key="pumping-kind")]
+    with st.container(border=True):
+        st.markdown(KIND_RULES[kind])
+    st.divider()
+
     stages = api.list_pumping_stages(kind)
-    stage = st.sidebar.selectbox("스테이지", stages, format_func=lambda s: f"{s['id']} · {s['title']}")
+    stage = st.sidebar.selectbox(
+        "스테이지", stages, format_func=lambda s: f"{s['id']} · {s['title']}", filter_mode=None
+    )
     role = ROLES[st.sidebar.radio("역할", list(ROLES))]
     sid = stage["id"]
     key = f"{sid}-{role}-game"
@@ -597,8 +629,6 @@ def pumping_chapter(kind: str = "pumping") -> None:
     st.subheader(stage["title"])
     st.markdown(f"$${stage['notation']}$$")
     st.write(stage["description"])
-    with st.expander("규칙"):
-        st.markdown(RULES if kind == "pumping" else CFL_RULES)
     hint = stage["hint"] if role == "break" else stage["hint_defend"]
     if hint:
         with st.expander("힌트"):
@@ -816,8 +846,8 @@ def main() -> None:
 
     if chapter in ("dfa", "nfa"):
         stage_chapter(chapter)
-    elif chapter in ("pumping", "cfl_pumping"):
-        pumping_chapter(chapter)
+    elif chapter == "pumping_game":
+        pumping_chapter()
     else:
         st.info("아직 준비 중인 챕터예요.")
 

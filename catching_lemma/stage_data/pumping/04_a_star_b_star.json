@@ -3,7 +3,7 @@
   "chapter": "pumping",
   "title": "a*b*",
   "description": "a가 0개 이상 나온 뒤 b가 0개 이상 나오는 문자열의 언어예요.",
-  "hint": "펌핑해서 순서를 깨려면 y에 a와 b가 함께 들어가야 해요. Lemma가 그렇게 나눠줄까요?",
+  "hint": "펌핑해서 순서를 깨려면 y에 a와 b가 함께 들어가야 해요.\n\nLemma가 그렇게 나눠줄까요?",
   "hint_defend": "y를 한 종류의 글자로만 잡으면 펌핑해도 a들이 b들보다 앞에 있는 순서가 유지돼요.",
   "regular": true,
   "language": {
