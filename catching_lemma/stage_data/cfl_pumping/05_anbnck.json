@@ -3,8 +3,8 @@
   "chapter": "cfl_pumping",
   "title": "aⁿbⁿcᵏ",
   "description": "a와 b가 같은 개수만큼 차례로 나온 뒤, c가 몇 개든 나오는 문자열의 언어예요.",
-  "hint": "c는 몇 개든 괜찮은 언어예요. Lemma가 c 블록에서 수비하면 어떻게 될까요?",
-  "hint_defend": "a와 b의 개수만 같으면 돼요. 펌핑할 때 이 조건을 지키는 위치를 찾아보세요.",
+  "hint": "c는 몇 개든 괜찮은 언어예요.\n\nLemma가 c 블록에서 수비하면 어떻게 될까요?",
+  "hint_defend": "a와 b의 개수만 같으면 돼요.\n\n펌핑할 때 이 조건을 지키는 위치를 찾아보세요.",
   "context_free": true,
   "language": {
     "notation": "L = \\{\\, a^n b^n c^k \\mid n, k \\ge 0 \\,\\}",

@@ -155,6 +155,26 @@ def test_diagram_skips_highlight_for_invalid_machine():
     assert "penwidth=2" not in api.diagram(broken, counterexample="a")
 
 
+def test_diagram_follows_theme():
+    """그래프 배경이 투명하므로 글자·화살표 색을 테마에 맞춘다. 모르는 테마는 두 테마 모두에서 보이는 회색."""
+    from catching_lemma.diagram import FOREGROUND
+
+    assert FOREGROUND["light"] != FOREGROUND["dark"]
+    cases = [
+        ("light", FOREGROUND["light"]),
+        ("dark", FOREGROUND["dark"]),
+        (None, FOREGROUND[None]),
+        ("sepia", FOREGROUND[None]),
+        (["dark"], FOREGROUND[None]),  # 해시할 수 없는 값도 예외 없이 회색
+    ]
+    for theme, color in cases:
+        dot = api.diagram(DFA_WRONG, theme=theme)
+        # 'color="…"'만 찾으면 'fontcolor="…"'에도 걸리므로, 테두리·화살표 색은 앞의 ", "까지 붙여 따로 확인한다
+        assert f'fontcolor="{color}"' in dot and f', color="{color}"' in dot, theme
+    # 반례 강조색은 테마와 상관없이 그대로
+    assert "penwidth=2" in api.diagram(DFA_WRONG, counterexample="a", theme="dark")
+
+
 # ---------- 펌핑 게임 ----------
 
 
@@ -226,7 +246,7 @@ def test_pumping_unknown_stage():
 
 
 def test_pumping_mistake_rate():
-    assert [api.pumping_mistake_rate(p) for p in range(5)] == [0.4, 0.3, 0.2, 0.1, 0.1]
+    assert [api.pumping_mistake_rate(p) for p in range(5)] == [0.2, 0.1, 0.0, 0.0, 0.0]
 
 
 def test_pumping_computer_receive():

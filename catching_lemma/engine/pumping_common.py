@@ -305,10 +305,11 @@ def choose_defense(splits: list[D], rng: random.Random, random_rate: float = 0.2
 def mistake_rate(point: int) -> float:
     """컴퓨터가 최선이 아닌 수를 두는 확률. 포인트가 진행될수록 줄어든다.
 
-    point는 0부터 센다: 1포인트 40%, 2포인트 30%, 3포인트 20%, 그 뒤로 10%.
+    point는 0부터 센다: 1포인트 20%, 2포인트 10%, 3포인트부터 0% (실수하지 않음).
     깨는 쪽에서는 Lemma(컴퓨터)의 수비에, 막는 쪽에서는 컴퓨터의 리시브에 적용한다.
+    실수가 나올 수 있는 포인트가 2개뿐이라, 3포인트 선승 게임을 운만으로 이길 수는 없다.
     """
-    return round(max(0.1, 0.4 - 0.1 * point), 2)
+    return round(max(0.0, 0.2 - 0.1 * point), 2)
 
 
 # ---------- 막는 쪽: 컴퓨터의 리시브 (두 게임 공용) ----------

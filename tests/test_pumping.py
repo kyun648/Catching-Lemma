@@ -250,7 +250,17 @@ def test_proof_unavailable_when_not_in_language():
 
 def test_mistake_rate_decreases_with_points():
     rates = [mistake_rate(p) for p in range(6)]
-    assert rates == [0.4, 0.3, 0.2, 0.1, 0.1, 0.1]
+    assert rates == [0.2, 0.1, 0.0, 0.0, 0.0, 0.0]
+
+
+def test_luck_alone_cannot_win():
+    """실수가 나올 수 있는 포인트 수가 이기는 데 필요한 점수(app.py의 WIN_POINTS = 3)보다 적다.
+
+    즉 컴퓨터의 실수만으로는 경기를 이길 수 없다. 경기는 최대 5포인트(3:2)까지 간다.
+    """
+    win_points = 3
+    lucky_points = sum(1 for p in range(2 * win_points - 1) if mistake_rate(p) > 0)
+    assert lucky_points < win_points
 
 
 def test_split_error():

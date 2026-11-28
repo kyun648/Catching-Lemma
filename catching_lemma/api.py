@@ -174,19 +174,22 @@ def to_dfa(machine: dict) -> dict | None:
     return automaton.to_dict()
 
 
-def diagram(machine: dict, counterexample: str | None = None) -> str:
+def diagram(machine: dict, counterexample: str | None = None, theme: str | None = None) -> str:
     """Graphviz DOT 문자열.
 
     counterexample을 주면 DFA는 그 문자열을 실행한 경로를, NFA는 끝까지 읽은 뒤 남은 상태를 강조한다.
     강조는 실행할 수 있는(error가 없는) 설계에서만 한다.
+    theme은 화면 테마("light" 또는 "dark")로, 글자와 화살표 색을 맞춘다.
+    그 밖의 값(None 포함)은 두 테마 모두에서 보이는 회색으로 그린다.
     """
+    theme = theme if theme in ("light", "dark") else None
     automaton = automaton_from_dict(machine)
     if counterexample is None or not automaton.is_valid():
-        return to_dot(automaton)
+        return to_dot(automaton, theme=theme)
     result = automaton.run(counterexample)
     if isinstance(automaton, NFA):
-        return to_dot(automaton, highlight_states=result.steps[-1])
-    return to_dot(automaton, highlight_path=result.path)
+        return to_dot(automaton, highlight_states=result.steps[-1], theme=theme)
+    return to_dot(automaton, highlight_path=result.path, theme=theme)
 
 
 # ---------- 펌핑 게임 ----------
@@ -310,7 +313,7 @@ def _split_dict(word: str, start: int, end: int) -> dict:
 
 
 def pumping_mistake_rate(point: int) -> float:
-    """컴퓨터의 실수 확률. point는 0부터 센다 (1포인트 0.4 → 2포인트 0.3 → 3포인트 0.2 → 이후 0.1)."""
+    """컴퓨터의 실수 확률. point는 0부터 센다 (1포인트 0.2 → 2포인트 0.1 → 3포인트부터 0)."""
     return mistake_rate(max(0, point) if isinstance(point, int) else 0)
 
 

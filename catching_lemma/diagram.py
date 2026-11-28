@@ -5,6 +5,9 @@ from __future__ import annotations
 from .engine import DFA, LAMBDA, NFA
 
 HIGHLIGHT = "#D85A30"
+# 글자·테두리·화살표 색. 배경은 투명하므로 화면 테마에 맞춘다.
+# 테마를 모를 때(None)는 밝은 테마와 어두운 테마 모두에서 보이는 회색을 쓴다 (탁구대 그림과 같은 색).
+FOREGROUND = {"light": "#31333F", "dark": "#E6E6E6", None: "#888780"}
 
 
 def _quote(name: str) -> str:
@@ -23,12 +26,15 @@ def to_dot(
     automaton: DFA | NFA,
     highlight_path: list | None = None,
     highlight_states: set | frozenset | None = None,
+    theme: str | None = None,
 ) -> str:
     """같은 두 상태 사이의 전이는 라벨을 합쳐서(a,b) 화살표 하나로 그린다.
 
     highlight_path: DFA 반례를 실행했을 때 지나간 상태 목록. 해당 전이를 강조한다.
     highlight_states: NFA 반례를 끝까지 읽은 뒤 활성화된 상태들. 해당 상태를 칠한다.
+    theme: 화면 테마("light" 또는 "dark"). 그 밖의 값이나 None이면 두 테마 모두에서 보이는 회색으로 그린다.
     """
+    fg = FOREGROUND.get(theme, FOREGROUND[None])
     highlighted_edges = set()
     if highlight_path:
         for src, dst in zip(highlight_path, highlight_path[1:]):
@@ -40,8 +46,8 @@ def to_dot(
         "digraph automaton {",
         "  rankdir=LR;",
         '  bgcolor="transparent";',
-        '  node [fontname="Helvetica", shape=circle];',
-        '  edge [fontname="Helvetica"];',
+        f'  node [fontname="Helvetica", shape=circle, color="{fg}", fontcolor="{fg}"];',
+        f'  edge [fontname="Helvetica", color="{fg}", fontcolor="{fg}"];',
         "  __start [shape=point, width=0];",
     ]
     for s in automaton.states:
